@@ -3,7 +3,7 @@
 
 use super::{Halted, Hooks, RunError, Session};
 use crate::model::Kline;
-use crate::pine::compiler::program::{BarEvent, BarPhase, ScriptType, VisualOutput};
+use crate::pine::compiler::program::{BarEvent, BarPhase, IndicatorPresentation, InputValue, ScriptType, ValueFormat, VisualOutput};
 use crate::pine::runtime::fast_hash::FastMap;
 use crate::pine::runtime::state::{AlertEvent, RuntimeState};
 #[cfg(test)]
@@ -409,7 +409,25 @@ impl Session {
             Some(halted) => halted.completed_bars.min((w.bar_index + 1) as usize),
             None => (w.bar_index + 1) as usize,
         };
+        let declaration = &self.program.declaration;
+        let parameters = self.program.input_schema.inputs.iter()
+            .filter_map(|input| {
+                let value = self.inputs.get(&input.id).unwrap_or(&input.default_value);
+                match value {
+                    InputValue::Int(v) => Some(v.to_string()),
+                    InputValue::Float(v) => Some(v.to_string()),
+                    InputValue::Bool(v) => Some(v.to_string()),
+                    InputValue::String(v) | InputValue::Source(v) => Some(v.chars().take(32).collect()),
+                    InputValue::Color(_) => None,
+                }
+            }).take(24).collect();
         VisualOutput {
+            presentation: IndicatorPresentation {
+                title: declaration.short_title.as_ref().filter(|s| !s.is_empty()).unwrap_or(&declaration.title).clone(),
+                number: ValueFormat { format: declaration.format.clone(), precision: declaration.precision },
+                plots: w.plot_formats.iter().map(|(id, format)| (*id, format.clone())).collect(),
+                parameters,
+            },
             overlay: self.program.declaration.overlay,
             bar_count,
             plots: sorted_by_id(&w.plots)

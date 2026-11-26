@@ -51,6 +51,7 @@ pub struct CanvasStyle {
     pub pane_buttons: ButtonVisibility,
     /// Whether the crosshair carries its box of values.
     pub ohlc_readout: bool,
+    pub indicator_readouts: crate::model::chart::canvas::IndicatorReadouts,
     /// Whether the last price's tag carries the time the forming bar has left.
     pub bar_countdown: bool,
 }
@@ -180,6 +181,7 @@ impl CanvasStyle {
             navigation: canvas.buttons.navigation,
             pane_buttons: canvas.buttons.pane,
             ohlc_readout: canvas.ohlc_readout,
+            indicator_readouts: canvas.indicator_readouts,
             bar_countdown: canvas.bar_countdown,
         }
     }

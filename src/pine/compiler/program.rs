@@ -204,9 +204,25 @@ impl Default for ChartTheme {
     }
 }
 
+/// Presentation metadata only: populated at the end of a run, never by the renderer.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ValueFormat {
+    pub format: Option<String>,
+    pub precision: Option<i64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct IndicatorPresentation {
+    pub title: String,
+    pub number: ValueFormat,
+    pub plots: HashMap<usize, ValueFormat>,
+    pub parameters: Vec<String>,
+}
+
 /// The rendered output of one full script run.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct VisualOutput {
+    pub presentation: IndicatorPresentation,
     pub overlay: bool,
     /// Number of bars the script ran over.
     pub bar_count: usize,
@@ -257,6 +273,7 @@ impl VisualOutput {
     pub fn split_forced_overlay(&self) -> (Self, Self) {
         let mut pane = self.clone();
         let mut forced = Self {
+            presentation: self.presentation.clone(),
             overlay: true,
             bar_count: self.bar_count,
             behind_chart: false,
@@ -265,7 +282,7 @@ impl VisualOutput {
         for plot in &mut pane.plots {
             if plot.force_overlay {
                 forced.plots.push(plot.clone());
-                plot.display &= !DISPLAY_PANE;
+                plot.display &= !(DISPLAY_PANE | crate::pine::outputs::DISPLAY_STATUS_LINE | crate::pine::outputs::DISPLAY_PRICE_SCALE);
             }
         }
         for marker in &mut pane.markers {

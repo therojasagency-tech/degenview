@@ -300,6 +300,27 @@ impl Default for ChartMargins {
 
 // MARK: The canvas
 
+/// Chart-wide readout preferences, independent of the scripts and their style overrides.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(default)]
+pub struct IndicatorReadouts {
+    pub names: bool,
+    pub values: bool,
+    pub axis_values: bool,
+    pub crosshair_tags: bool,
+    pub parameters: bool,
+}
+
+impl Default for IndicatorReadouts {
+    fn default() -> Self {
+        Self { names: true, values: true, axis_values: true, crosshair_tags: true, parameters: false }
+    }
+}
+
+impl IndicatorReadouts {
+    fn is_default(&self) -> bool { *self == Self::default() }
+}
+
 /// Every canvas setting of one chart.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
@@ -316,6 +337,8 @@ pub struct ChartCanvas {
     /// Whether the box of values (open, high, low, close, volume…) under the crosshair is shown.
     /// The crosshair itself is drawn either way.
     pub ohlc_readout: bool,
+    #[serde(skip_serializing_if = "IndicatorReadouts::is_default")]
+    pub indicator_readouts: IndicatorReadouts,
     /// Whether the last price's tag on the axis also tells how long the forming bar has left.
     /// A row with the setting on is written without the key, so a build that predates it
     /// reads and writes the same row back.
@@ -341,6 +364,7 @@ impl Default for ChartCanvas {
             buttons: ChartButtons::default(),
             margins: ChartMargins::default(),
             ohlc_readout: true,
+            indicator_readouts: IndicatorReadouts::default(),
             bar_countdown: true,
         }
     }

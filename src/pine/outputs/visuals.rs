@@ -163,6 +163,11 @@ fn plot(args: &[Arg], site: usize, state: &mut RuntimeState) -> Result<RuntimeVa
         ],
     );
     let color = color_value(b.get("color"), Some(DEFAULT_COLOR)).unwrap_or(0);
+    // Read named presentation arguments once per plot site. No effect on its numeric series.
+    state.plot_formats.entry(site).or_insert_with(|| crate::pine::compiler::program::ValueFormat {
+        format: text(&b, "format"),
+        precision: b.get("precision").and_then(RuntimeValue::int_value),
+    });
     let output = state.plots.entry(site).or_insert_with(|| PlotOutput {
         id: site,
         title: text(&b, "title"),

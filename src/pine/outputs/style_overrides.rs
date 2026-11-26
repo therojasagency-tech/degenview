@@ -152,7 +152,7 @@ impl StyleOverrides {
 
         for plot in &mut result.plots {
             if self.is_hidden(StyleKind::Plot, plot.id) {
-                plot.display &= !DISPLAY_PANE;
+                plot.display &= !(DISPLAY_PANE | crate::pine::outputs::DISPLAY_STATUS_LINE | crate::pine::outputs::DISPLAY_PRICE_SCALE);
             }
             if let Some(override_color) = self.color(StyleKind::Plot, plot.id) {
                 plot.color = recolored(plot.color, override_color);

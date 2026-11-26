@@ -759,11 +759,12 @@ pub fn candle_index_for_bar(bar: i64, bar_count: usize, candle_count: usize) -> 
 // MARK: Value range
 
 /// Prices of plots, plotcandles and the baseline of filled styles that show in the pane.
-fn series_values(pine: &VisualOutput, candle_count: usize) -> Vec<f64> {
+fn series_values(pine: &VisualOutput, candle_count: usize, tail: usize) -> Vec<f64> {
     let mut values = Vec::new();
     for output in pine.plots.iter().filter(|o| o.display & DISPLAY_PANE != 0) {
-        let skip = output.values.len().saturating_sub(candle_count);
-        values.extend(output.values[skip..].iter().flatten().copied());
+        let end = output.values.len().saturating_sub(tail);
+        let start = end.saturating_sub(candle_count);
+        values.extend(output.values[start..end].iter().flatten().copied());
         if matches!(
             output.style,
             PlotStyle::Histogram | PlotStyle::Columns | PlotStyle::Area
@@ -776,8 +777,9 @@ fn series_values(pine: &VisualOutput, candle_count: usize) -> Vec<f64> {
         .iter()
         .filter(|o| o.display & DISPLAY_PANE != 0)
     {
-        let skip = output.bars.len().saturating_sub(candle_count);
-        for bar in output.bars[skip..].iter().flatten() {
+        let end = output.bars.len().saturating_sub(tail);
+        let start = end.saturating_sub(candle_count);
+        for bar in output.bars[start..end].iter().flatten() {
             let (high, low) =
                 crate::model::chart::look::drawn_extremes(bar.open, bar.high, bar.low, bar.close);
             values.extend([high, low]);
@@ -788,11 +790,15 @@ fn series_values(pine: &VisualOutput, candle_count: usize) -> Vec<f64> {
 
 /// Boxes, lines, labels and polylines that overlap the visible bars (and `future_bars` past them).
 pub fn drawing_values(pine: &VisualOutput, candle_count: usize, future_bars: usize) -> Vec<f64> {
+    drawing_values_at(pine, candle_count, future_bars, 0)
+}
+
+fn drawing_values_at(pine: &VisualOutput, candle_count: usize, future_bars: usize, tail: usize) -> Vec<f64> {
     if candle_count == 0 {
         return Vec::new();
     }
-    let first = pine.bar_count as i64 - candle_count as i64;
-    let last = pine.bar_count as i64 - 1 + future_bars as i64;
+    let first = pine.bar_count as i64 - tail as i64 - candle_count as i64;
+    let last = pine.bar_count as i64 - tail as i64 - 1 + future_bars as i64;
     let in_view = |a: i64, b: i64| a.min(b) <= last && a.max(b) >= first;
     let mut values = Vec::new();
     for item in pine
@@ -831,8 +837,13 @@ pub fn drawing_values(pine: &VisualOutput, candle_count: usize, future_bars: usi
 /// Vertical domain for a script pane: every value-anchored output in view, padded so nothing
 /// touches the frame (`padding` is a share of the range, as for the chart's price range).
 pub fn pane_value_range(pine: &VisualOutput, candle_count: usize, padding: f64) -> (f64, f64) {
-    let mut values = series_values(pine, candle_count);
-    values.extend(drawing_values(pine, candle_count, 0));
+    pane_value_range_at(pine, candle_count, 0, padding)
+}
+
+/// Same visible series window as PineLayer, including bars after the right edge.
+pub fn pane_value_range_at(pine: &VisualOutput, candle_count: usize, tail: usize, padding: f64) -> (f64, f64) {
+    let mut values = series_values(pine, candle_count, tail);
+    values.extend(drawing_values_at(pine, candle_count, 0, tail));
     values.extend(pine.hlines.iter().map(|line| line.value));
     values.retain(|value| value.is_finite());
     let (Some(low), Some(high)) = (

@@ -99,6 +99,7 @@ pub struct RuntimeState {
     /// slow four sessions running at once by 11% (`simultaneous_x4`).
     pub once_finished: Vec<usize>,
     pub plots: FastMap<usize, PlotOutput>,
+    pub plot_formats: FastMap<usize, crate::pine::compiler::program::ValueFormat>,
     pub hlines: FastMap<usize, HorizontalLine>,
     pub markers: FastMap<usize, MarkerOutput>,
     pub arrows: FastMap<usize, ArrowOutput>,

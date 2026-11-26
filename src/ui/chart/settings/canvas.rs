@@ -111,6 +111,15 @@ pub fn show(
     readout_row(ui, &mut canvas.ohlc_readout);
 
     ui.add_space(16.0);
+    section_title(ui, tr!("Indicator readouts"), None);
+    let readouts = &mut canvas.indicator_readouts;
+    ui.checkbox(&mut readouts.names, tr!("Indicator names"));
+    ui.checkbox(&mut readouts.values, tr!("Indicator values"));
+    ui.checkbox(&mut readouts.axis_values, tr!("Indicator value labels on scales"));
+    ui.checkbox(&mut readouts.crosshair_tags, tr!("Crosshair axis labels"));
+    ui.checkbox(&mut readouts.parameters, tr!("Indicator parameters"));
+
+    ui.add_space(16.0);
     section_title(ui, tr!("Scales"), Some(tr!("The price and time axes.")));
     scales_rows(ui, canvas, &defaults);
 

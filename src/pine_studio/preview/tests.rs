@@ -225,7 +225,7 @@ fn percent_uses_a_real_minus() {
 #[test]
 fn inherits_exact_forex_provider_and_timeframe_without_changing_chart() {
     let mut preview = state();
-    for (source, ticker, timeframe) in [(DataSource::OpenChart, "FOREXCOM:EURUSD", Timeframe::HOUR_1), (DataSource::Oanda, "EUR_USD", Timeframe::MIN_5)] {
+    for (source, ticker, timeframe) in [(DataSource::OpenChart, "FOREXCOM:EURUSD", Timeframe::HOUR_1), (DataSource::Oanda, "EUR_USD", Timeframe::MINUTE_5)] {
         let instrument = crate::model::market::instrument::InstrumentId::new(source, ticker);
         preview.inherit_market(&instrument, timeframe);
         assert_eq!(preview.market.source, source);
