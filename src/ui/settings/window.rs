@@ -34,6 +34,7 @@ pub enum SettingsSection {
     Appearance,
     PineStudio,
     Alpaca,
+    Oanda,
     Brokers,
     CoinMarketCap,
     Ai,
@@ -48,10 +49,11 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Appearance,
         Self::PineStudio,
         Self::Alpaca,
+        Self::Oanda,
         Self::Brokers,
         Self::CoinMarketCap,
         Self::Ai,
@@ -77,6 +79,7 @@ impl SettingsSection {
             Self::Appearance => tr!("Appearance"),
             Self::PineStudio => tr!("Pine Studio"),
             Self::Alpaca => "Alpaca",
+            Self::Oanda => "OANDA",
             Self::Brokers => tr!("Brokers"),
             Self::CoinMarketCap => "CoinMarketCap",
             Self::Ai => tr!("AI Assistant"),
@@ -97,6 +100,7 @@ impl SettingsSection {
             Self::Appearance => Color32::from_rgb(94, 92, 230),
             Self::PineStudio => Color32::from_rgb(172, 142, 104),
             Self::Alpaca => Color32::from_rgb(255, 159, 10),
+            Self::Oanda => Color32::from_rgb(35, 160, 140),
             Self::Brokers => Color32::from_rgb(255, 112, 67),
             Self::CoinMarketCap => Color32::from_rgb(10, 132, 255),
             Self::Ai => Color32::from_rgb(255, 214, 10),
@@ -117,6 +121,7 @@ impl SettingsSection {
             Self::Appearance => "appearance",
             Self::PineStudio => "pinestudio",
             Self::Alpaca => "alpaca",
+            Self::Oanda => "oanda",
             Self::Brokers => "brokers",
             Self::CoinMarketCap => "coinmarketcap",
             Self::Ai => "ai",
@@ -189,6 +194,7 @@ pub struct SettingsState {
     pub section: SettingsSection,
     pub webhooks: WebhookSettingsState,
     pub api_keys: ApiKeysState,
+    pub oanda: crate::ui::settings::oanda::OandaForm,
     pub brokers: crate::ui::settings::brokers::BrokersState,
     pub ai: crate::ui::settings::ai::AiSettingsState,
     pub network: crate::ui::settings::network::NetworkState,
@@ -346,6 +352,7 @@ impl SettingsSection {
             Self::Appearance => Icon::Paintbrush,
             Self::PineStudio => Icon::AngleBrackets,
             Self::Alpaca => Icon::ChartLine,
+            Self::Oanda => Icon::ChartLine,
             Self::Brokers => Icon::ArrowLeftRight,
             Self::CoinMarketCap => Icon::Gauge,
             Self::Ai => Icon::Sparkles,
@@ -464,6 +471,10 @@ pub fn show(
                 tr!("Connect Alpaca to chart US stocks and ETFs in DegenView."),
                 |ui| api_keys::alpaca_body(ui, &mut state.api_keys, store),
             );
+        }
+        SettingsSection::Oanda => {
+            page_shell(&mut page, section, "Datos de mercado OANDA v20. Solo lectura.",
+                |ui| crate::ui::settings::oanda::body(ui, &mut state.oanda));
         }
         SettingsSection::Brokers => {
             page_shell(

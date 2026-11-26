@@ -17,7 +17,7 @@ pub mod live;
 pub(in crate::service) mod mexc;
 pub(in crate::service) mod okx;
 pub(in crate::service) mod openchart;
-pub(in crate::service) mod oanda;
+pub(crate) mod oanda;
 pub(in crate::service) mod paging;
 pub(in crate::service) mod polymarket;
 pub mod retry;

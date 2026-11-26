@@ -11,8 +11,21 @@ pub const OANDA: Oanda = Oanda;
 static AGENT: LazyLock<FollowingAgent> = LazyLock::new(|| FollowingAgent::new(|config|
     config.timeout_global(Some(Duration::from_secs(20))).http_status_as_error(false)
 ));
+use crate::service::keychain::oanda::{OandaCredential, OandaStore};
 struct Config { host: &'static str, account: String, token: String }
+fn host_for(environment: &str) -> Result<&'static str, ProviderError> {
+    match environment {
+        "live" => Ok("https://api-fxtrade.oanda.com"),
+        "practice" => Ok("https://api-fxpractice.oanda.com"),
+        _ => Err(ProviderError::other("OANDA environment must be practice or live.")),
+    }
+}
 fn config() -> Result<Config, ProviderError> {
+    // Explicit legacy launcher credentials override the locally saved account.
+    if std::env::var_os("DEGENVIEW_OANDA_TOKEN").is_none() {
+        let saved = OandaStore::shared().read().ok_or_else(|| ProviderError::other("Configure OANDA in Settings."))?;
+        return Ok(Config { host: host_for(&saved.environment)?, account: saved.account, token: saved.token });
+    }
     let token = std::env::var("DEGENVIEW_OANDA_TOKEN").ok().filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_graphic()))
         .ok_or_else(|| ProviderError::other("Launch DegenView with your OANDA v20 API token."))?;
     let account = std::env::var("DEGENVIEW_OANDA_ACCOUNT").ok().filter(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit() || b == b'-'))
@@ -26,9 +39,12 @@ fn config() -> Result<Config, ProviderError> {
 }
 fn get<T: serde::de::DeserializeOwned>(cfg: &Config, path: &str) -> Result<T, ProviderError> {
     let url = format!("{}/v3/accounts/{}{}", cfg.host, cfg.account, path);
-    let agent = AGENT.get_for(&url);
-    let mut response = agent.get(&url)
-        .header("Authorization", format!("Bearer {}", cfg.token))
+    request(&url, &cfg.token)
+}
+fn request<T: serde::de::DeserializeOwned>(url: &str, token: &str) -> Result<T, ProviderError> {
+    let agent = AGENT.get_for(url);
+    let mut response = agent.get(url)
+        .header("Authorization", format!("Bearer {token}"))
         .header("Accept-Datetime-Format", "UNIX")
         .call().map_err(|_| ProviderError::from(http::Error::Network("OANDA request failed".into())))?;
     let status = response.status().as_u16();
@@ -36,6 +52,43 @@ fn get<T: serde::de::DeserializeOwned>(cfg: &Config, path: &str) -> Result<T, Pr
     let body = response.body_mut().with_config().limit(8 * 1024 * 1024).read_to_string()
         .map_err(ProviderError::data)?;
     serde_json::from_str(&body).map_err(ProviderError::data)
+}
+
+#[derive(Deserialize)]
+struct Accounts { accounts: Vec<Account> }
+#[derive(Deserialize)]
+struct Account { id: String }
+
+pub fn discover_accounts(environment: &str, token: &str) -> Result<Vec<String>, ProviderError> {
+    let token = token.trim();
+    if token.is_empty() || !token.bytes().all(|b| b.is_ascii_graphic()) {
+        return Err(ProviderError::other("Enter a valid OANDA v20 token."));
+    }
+    let host = host_for(environment)?;
+    let data: Accounts = request(&format!("{host}/v3/accounts"), token)?;
+    let mut ids: Vec<_> = data.accounts.into_iter().map(|a| a.id).filter(|id| {
+        !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit() || b == b'-')
+    }).collect();
+    ids.sort(); ids.dedup();
+    if ids.is_empty() { return Err(ProviderError::other("No OANDA v20 accounts returned.")); }
+    Ok(ids)
+}
+
+pub fn connect_account(environment: String, token: String, account: String) -> Result<(), ProviderError> {
+    let ids = discover_accounts(&environment, &token)?;
+    if !ids.contains(&account) { return Err(ProviderError::other("The selected account is not authorized.")); }
+    let cfg = Config { host: host_for(&environment)?, account: account.clone(), token: token.trim().to_owned() };
+    let _: Instruments = get(&cfg, "/instruments")?;
+    OandaStore::shared().save(&OandaCredential { environment, account, token: cfg.token })
+        .map_err(|_| ProviderError::other("Could not save OANDA credentials securely."))?;
+    if let Ok(mut cache) = CATALOG.lock() { *cache = None; }
+    Ok(())
+}
+
+pub fn disconnect_account() -> Result<(), ProviderError> {
+    OandaStore::shared().remove().map_err(|_| ProviderError::other("Could not remove saved OANDA credentials."))?;
+    if let Ok(mut cache) = CATALOG.lock() { *cache = None; }
+    Ok(())
 }
 
 #[derive(Clone, Deserialize)]
