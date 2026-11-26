@@ -14,7 +14,7 @@ static AGENT: LazyLock<FollowingAgent> = LazyLock::new(|| FollowingAgent::new(|c
     config.timeout_global(Some(Duration::from_secs(20))).http_status_as_error(false)
 ));
 use crate::service::keychain::oanda::{OandaCredential, OandaStore};
-struct Config { host: &'static str, account: String, token: String }
+pub(super) struct Config { pub(super) host: &'static str, pub(super) account: String, pub(super) token: String }
 fn host_for(environment: &str) -> Result<&'static str, ProviderError> {
     match environment {
         "live" => Ok("https://api-fxtrade.oanda.com"),
@@ -22,7 +22,7 @@ fn host_for(environment: &str) -> Result<&'static str, ProviderError> {
         _ => Err(ProviderError::other("OANDA environment must be practice or live.")),
     }
 }
-fn config() -> Result<Config, ProviderError> {
+pub(super) fn config() -> Result<Config, ProviderError> {
     // Explicit legacy launcher credentials override the locally saved account.
     if std::env::var_os("DEGENVIEW_OANDA_TOKEN").is_none() {
         let saved = OandaStore::shared().read().ok_or_else(|| ProviderError::other("Configure OANDA in Settings."))?;
@@ -134,7 +134,7 @@ struct History { instrument: String, granularity: String, candles: Vec<Candle> }
 struct Candle { time: String, mid: Mid, volume: u64 }
 #[derive(Deserialize)]
 struct Mid { o: String, h: String, l: String, c: String }
-fn time_ms(text: &str) -> Result<i64, ProviderError> {
+pub(super) fn time_ms(text: &str) -> Result<i64, ProviderError> {
     let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
     let seconds: i64 = whole.parse().map_err(ProviderError::data)?;
     if !(0..=253_402_214_399).contains(&seconds) || !fraction.bytes().all(|b| b.is_ascii_digit()) {

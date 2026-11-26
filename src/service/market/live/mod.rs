@@ -2,7 +2,7 @@ use crate::lock::lock;
 use crate::model::{DataSource, Kline, Timeframe};
 use crate::service::net::ws::{Frame, Session};
 use eframe::egui;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -13,6 +13,7 @@ mod kraken;
 mod mexc;
 mod okx;
 mod openchart;
+mod oanda;
 
 /// The most bars the inbox keeps. A feed nobody reads for days (a background tab, a hidden
 /// window) still sees one new bar per symbol per interval, so this is only a backstop.
@@ -23,12 +24,24 @@ const INBOX_CAPACITY: usize = 4096;
 /// last of those is the same as applying all of them, so the queue never grows with time. A plain
 /// channel did: it is only drained while the workspace is painted, and a tab left in the
 /// background kept every update for as long as the app ran.
+#[derive(Clone, Copy, Debug)]
+pub struct PriceSample { pub time: i64, pub price: f64 }
+
 #[derive(Default)]
 pub struct LiveInbox {
+    prices: Mutex<VecDeque<(String, PriceSample)>>,
     latest: Mutex<BTreeMap<(i64, String), Kline>>,
 }
 
 impl LiveInbox {
+    fn push_price(&self, symbol: String, sample: PriceSample) {
+        let mut prices = lock(&self.prices);
+        if prices.len() >= INBOX_CAPACITY { prices.pop_front(); }
+        prices.push_back((symbol,sample));
+    }
+    pub fn drain_prices(&self) -> Vec<(String, PriceSample)> {
+        lock(&self.prices).drain(..).collect()
+    }
     fn push(&self, symbol: String, kline: Kline) {
         let mut latest = lock(&self.latest);
         latest.insert((kline.open_time, symbol), kline);
@@ -75,6 +88,13 @@ impl LiveFeed {
         base: Timeframe,
         ctx: egui::Context,
     ) -> Option<Self> {
+        if source == DataSource::Oanda {
+            let inbox = Arc::new(LiveInbox::default());
+            let shutdown = Arc::new(AtomicBool::new(false));
+            let (worker_inbox, worker_shutdown, worker_symbols) = (Arc::clone(&inbox), Arc::clone(&shutdown), symbols.clone());
+            std::thread::spawn(move || oanda::run(worker_symbols, worker_inbox, worker_shutdown, ctx));
+            return Some(Self { inbox, signature: (symbols, base), shutdown });
+        }
         if source == DataSource::OpenChart {
             let inbox = Arc::new(LiveInbox::default());
             let shutdown = Arc::new(AtomicBool::new(false));

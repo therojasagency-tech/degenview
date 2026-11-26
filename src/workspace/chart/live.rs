@@ -3,7 +3,7 @@
 
 use crate::model::market::live::LiveMark;
 use crate::model::{DataSource, InstrumentId, Kline, Timeframe};
-use crate::service::market::live::LiveFeed;
+use crate::service::market::live::{LiveFeed, PriceSample};
 use crate::workspace::ChartWorkspace;
 use eframe::egui;
 use std::time::Instant;
@@ -13,6 +13,7 @@ impl ChartWorkspace {
         for source in DataSource::CANDLE_STREAMS {
             self.update_live_feed(source, ctx);
         }
+        self.update_live_feed(DataSource::Oanda, ctx);
     }
 
     fn update_live_feed(&mut self, source: DataSource, ctx: &egui::Context) {
@@ -23,18 +24,20 @@ impl ChartWorkspace {
             .map(|chart| InstrumentId::new(source, chart.symbol.as_str()).api_symbol())
             .collect();
         // The markets compared on a chart stream too, once however many overlays name them.
-        for symbol in self.overlay_hub.streamed_symbols(source) {
-            if !symbols.contains(&symbol) {
-                symbols.push(symbol);
+        if source != DataSource::Oanda {
+            for symbol in self.overlay_hub.streamed_symbols(source) {
+                if !symbols.contains(&symbol) { symbols.push(symbol); }
             }
-        }
+        } else { symbols.sort(); symbols.dedup(); }
         // The stream is of the candle length the source serves the timeframe from (one-minute
         // klines for a 22-minute chart, monthly ones for a quarter); a timeframe it cannot reach
         // has none.
         let base = source
             .plan(self.timeframe)
             .map(|plan| plan.base())
-            .filter(|_| !symbols.is_empty());
+            .filter(|_| !symbols.is_empty())
+            // Only native intraday candles with reliable nominal boundaries in this first version.
+            .filter(|base| source != DataSource::Oanda || (*base == self.timeframe && base.nominal_ms() <= 3_600_000));
         let wanted = base.map(|base| (symbols, base));
         let changed = match (self.live_feeds.get(&source), &wanted) {
             (Some(feed), Some(wanted)) => feed.signature() != wanted,
@@ -54,6 +57,11 @@ impl ChartWorkspace {
             }
         }
 
+        if source == DataSource::Oanda {
+            let prices = self.live_feeds.get(&source).map(|f| f.inbox.drain_prices()).unwrap_or_default();
+            for (symbol, sample) in prices { self.apply_oanda_price(&symbol, sample); }
+            return;
+        }
         let updates = self
             .live_feeds
             .get(&source)
@@ -67,6 +75,22 @@ impl ChartWorkspace {
             self.overlay_hub
                 .apply_live(source, self.timeframe, base, &symbol, &kline, now);
             self.apply_live_kline(source, base, &symbol, kline, now);
+        }
+    }
+
+    fn apply_oanda_price(&mut self, symbol: &str, sample: PriceSample) {
+        let timeframe = self.timeframe;
+        let now = crate::clock::now_ms();
+        // Do not replay a backlog after sleep or a hidden tab; REST can recover the full bar.
+        if sample.time < now - 15_000 || sample.time > now + 5_000 { return; }
+        for chart in self.charts.iter_mut().filter(|chart| chart.source == DataSource::Oanda
+            && chart.data_timeframe == Some(timeframe) && chart.symbol.eq_ignore_ascii_case(symbol)) {
+            if chart.last_data_ms.is_some_and(|received| sample.time < received) { continue; }
+            if let Some(last) = chart.candles.last_mut() {
+                apply_sample(last, sample);
+            }
+            // No LiveMark: the next official REST snapshot must be free to replace this
+            // sampled update (including its high, low and volume). Never create a candle here.
         }
     }
 
@@ -104,12 +128,34 @@ impl ChartWorkspace {
     }
 }
 
+fn apply_sample(last: &mut Kline, sample: PriceSample) -> bool {
+    if !sample.price.is_finite() || sample.price <= 0.0
+        || sample.time < last.open_time || sample.time > last.close_time { return false; }
+    last.high = last.high.max(sample.price);
+    last.low = last.low.min(sample.price);
+    last.close = sample.price;
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::workspace::chart::Chart;
     use crate::workspace::test_support::{candle, empty_workspace};
 
+    #[test]
+    fn sampled_oanda_prices_never_change_volume_or_create_new_bars() {
+        let mut bar = candle(1000,1.0);
+        bar.close_time = 1999;
+        let volume = bar.volume;
+        let open = bar.open;
+        assert!(apply_sample(&mut bar,PriceSample{time:1500,price:1.5}));
+        assert_eq!(bar.close,1.5);
+        assert_eq!(bar.open,open);
+        assert_eq!(bar.volume,volume);
+        assert!(!apply_sample(&mut bar,PriceSample{time:2000,price:2.0}));
+        assert_eq!(bar.close,1.5);
+    }
     #[test]
     fn every_chart_of_the_symbol_takes_the_live_bar() {
         let mut workspace = empty_workspace(1);
