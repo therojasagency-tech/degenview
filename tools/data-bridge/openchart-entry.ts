@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { makeClient, type ClientOptions } from "../server/data/providers/tradingview/client";
 import { createAdapter, createHandler } from "./adapter.mjs";
+import { authorizeBrowser, macBrowserInteraction } from "./browser-login";
 
 export async function openChartHandler(token: string, options: ClientOptions = {}) {
   const client = await Effect.runPromise(makeClient(options));
@@ -23,7 +24,13 @@ if (import.meta.main) {
   if (app && !existsSync(app)) throw new Error("Build the DegenView app first.");
   const token = app ? randomBytes(32).toString("hex") : process.env.DEGENVIEW_BRIDGE_TOKEN;
   if (!token || token.length < 32) throw new Error("A local bridge token is required.");
-  const handler = await openChartHandler(token);
+  const login = process.env.DEGENVIEW_TV_LOGIN ?? "anonymous";
+  if (login !== "anonymous" && login !== "browser") throw new Error("Invalid TradingView login mode.");
+  const session = login === "browser" ? await authorizeBrowser(macBrowserInteraction) : undefined;
+  const handler = await openChartHandler(token, session ? {
+    credential: () => Effect.succeed(session),
+  } : {});
+  console.log(session ? "TradingView browser session connected." : "TradingView anonymous session selected.");
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
