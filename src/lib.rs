@@ -57,12 +57,9 @@ pub fn run_gui_with(
     // A finished update leaves the previous app in a hidden folder until the new one has started.
     service::work_queue::submit(service::update::install::cleanup_stale);
     service::work_queue::submit(service::update::install::sync_installed_version);
-    // macOS rounds and insets the square art itself (`inset_macos_icon`); elsewhere the file is
-    // drawn as it is, so it comes with its corners (`tools/round-icon.py`).
+    // Use the same finished icon as Finder, including any build-time custom override.
     #[cfg(target_os = "macos")]
-    let icon = inset_macos_icon(eframe::icon_data::from_png_bytes(include_bytes!(
-        "../assets/brand/DegenView-512.png"
-    ))?);
+    let icon = macos_app_icon()?;
     #[cfg(not(target_os = "macos"))]
     let icon = ui::window::chrome::app_icon();
     graphics::start(|graphics| {
@@ -122,6 +119,66 @@ pub fn run_gui_with(
 
 pub fn run_alert_agent() -> Result<(), Box<dyn std::error::Error>> {
     host::alert::runtime::run_alert_agent()
+}
+
+/// Decode the modern PNG representations inside an ICNS container. The file already
+/// defines the finished icon and its margins: do not round or inset it again.
+#[cfg(target_os = "macos")]
+fn icon_from_icns(bytes: &[u8]) -> Option<egui::IconData> {
+    if bytes.get(..4)? != b"icns" {
+        return None;
+    }
+    let size = u32::from_be_bytes(bytes.get(4..8)?.try_into().ok()?) as usize;
+    if size < 8 || size > bytes.len() {
+        return None;
+    }
+    let mut chunks = Vec::new();
+    let mut offset = 8;
+    while offset < size {
+        let header = bytes.get(offset..offset.checked_add(8)?)?;
+        let length = u32::from_be_bytes(header[4..8].try_into().ok()?) as usize;
+        let end = offset.checked_add(length)?;
+        if length < 8 || end > size {
+            return None;
+        }
+        let payload = &bytes[offset + 8..end];
+        if payload.starts_with(b"\x89PNG\r\n\x1a\n") {
+            // Prefer the 512px representation for the Dock, then 1024px, then smaller ones.
+            let rank = match &header[..4] {
+                b"ic09" | b"ic14" => 0,
+                b"ic10" => 1,
+                b"ic08" | b"ic13" => 2,
+                b"ic07" => 3,
+                _ => 4,
+            };
+            chunks.push((rank, payload));
+        }
+        offset = end;
+    }
+    chunks.sort_by_key(|(rank, _)| *rank);
+    chunks.into_iter().find_map(|(_, png)| {
+        eframe::icon_data::from_png_bytes(png).ok()
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn macos_app_icon() -> Result<egui::IconData, Box<dyn std::error::Error>> {
+    // Installed app: use the actual resource copied by bundle.sh. Development runs can
+    // use the exact same tracked ICNS without needing a .app bundle.
+    if let Some(icon) = std::env::current_exe().ok()
+        .and_then(|exe| Some(exe.parent()?.parent()?.join("Resources/DegenView.icns")))
+        .and_then(|path| std::fs::read(path).ok())
+        .and_then(|bytes| icon_from_icns(&bytes))
+    {
+        return Ok(icon);
+    }
+    if let Some(icon) = icon_from_icns(include_bytes!("../assets/brand/DegenView.icns")) {
+        return Ok(icon);
+    }
+    // Compatibility with older ICNS files that contain no PNG representations.
+    Ok(inset_macos_icon(eframe::icon_data::from_png_bytes(include_bytes!(
+        "../assets/brand/DegenView-512.png"
+    ))?))
 }
 
 /// Fraction of the canvas the icon art fills. AppKit draws `applicationIconImage` as-is, so the
@@ -258,6 +315,16 @@ mod rounded_icon_tests {
 #[cfg(all(test, target_os = "macos"))]
 mod icon_tests {
     use super::*;
+
+    #[test]
+    fn dock_icon_reads_the_tracked_icns() {
+        let icon = icon_from_icns(include_bytes!("../assets/brand/DegenView.icns"))
+            .expect("the tracked ICNS contains a PNG representation");
+        assert_eq!((icon.width, icon.height), (512, 512));
+        assert_eq!(icon.rgba.len(), 512 * 512 * 4);
+        assert!(icon_from_icns(b"icns\0\0\0\x10").is_none());
+        assert!(icon_from_icns(b"not an icon").is_none());
+    }
 
     #[test]
     fn dock_icon_keeps_standard_margin_and_rounded_corners() {
