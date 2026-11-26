@@ -365,14 +365,12 @@ impl Engine {
             return;
         }
         for (key, instrument) in &wanted {
-            if matches!(instrument.source, DataSource::CoinMarketCap | DataSource::OpenChart | DataSource::Oanda)
+            if matches!(instrument.source, DataSource::CoinMarketCap | DataSource::OpenChart)
                 && !self.known.contains_key(key) {
                 self.publish(
                     key,
                     WatchlistQuote::unsupported(Some(
-                        if instrument.source == DataSource::Oanda {
-                            tr!("OANDA watchlist quotes are not available yet")
-                        } else if instrument.source == DataSource::OpenChart {
+                        if instrument.source == DataSource::OpenChart {
                             tr!("OpenChart watchlist quotes are not available yet")
                         } else if instrument.symbol.starts_with("portfolio:") {
                             tr!("Portfolio cards have no market quote")
@@ -505,7 +503,7 @@ impl Engine {
             return None;
         }
         match instrument.source {
-            DataSource::CoinMarketCap | DataSource::OpenChart | DataSource::Oanda => None,
+            DataSource::CoinMarketCap | DataSource::OpenChart => None,
             source if source.streams_quotes() => {
                 // The socket supplies prices; REST fills a product it has not answered, and
                 // refreshes one it has gone quiet on, so a thin market's price never ages.
@@ -1809,6 +1807,17 @@ mod tests {
         round(&engine, &provider, T0);
         assert!(provider.calls().is_empty());
         assert_eq!(book.get(&market).unwrap().freshness, Freshness::Unsupported);
+    }
+
+    #[test]
+    fn oanda_quotes_are_polled() {
+        let (engine, book, provider) = setup();
+        let market = id(DataSource::Oanda, "EUR_USD");
+        provider.price("EUR_USD", 1.10210);
+        lock(&engine).update(1, vec![market.clone()], true, T0);
+        round(&engine, &provider, T0);
+        assert_eq!(last(&book, &market), Some(1.10210));
+        assert_eq!(provider.calls(), vec![(DataSource::Oanda, vec!["EUR_USD".into()])]);
     }
 
     #[test]

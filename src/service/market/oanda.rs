@@ -4,6 +4,8 @@ use crate::service::{MarketSource, ProviderError, SearchResult};
 use crate::service::net::{agent::FollowingAgent, http, url::encode_component};
 use serde::Deserialize;
 use std::sync::{Arc, LazyLock, Mutex};
+use std::collections::HashMap;
+use crate::model::watchlist::quote::SourceQuote;
 use std::time::{Duration, Instant};
 
 pub struct Oanda;
@@ -179,6 +181,73 @@ fn history(symbol: &str, tf: Timeframe, count: usize, end: Option<i64>) -> Resul
     let data = get(&cfg, &path)?;
     decode(data, &symbol, &gran, tf)
 }
+
+// One batched read for current bid/ask and one for the latest completed daily candle.
+// No trades, positions or account balance endpoints are used.
+#[derive(Deserialize)]
+struct Pricing { prices: Vec<PriceRow> }
+#[derive(Deserialize)]
+struct PriceRow {
+    instrument: String,
+    time: String,
+    #[serde(default)] bids: Vec<PriceLevel>,
+    #[serde(default)] asks: Vec<PriceLevel>,
+}
+#[derive(Deserialize)]
+struct PriceLevel { price: String }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LatestCandles { latest_candles: Vec<DailyRow> }
+#[derive(Deserialize)]
+struct DailyRow { instrument: String, granularity: String, candles: Vec<DailyCandle> }
+#[derive(Deserialize)]
+struct DailyCandle { time: String, complete: bool, mid: Option<Mid> }
+
+fn positive_price(text: &str) -> Option<f64> {
+    text.parse::<f64>().ok().filter(|v| v.is_finite() && *v > 0.0)
+}
+fn daily_references(data: LatestCandles) -> HashMap<String, f64> {
+    let mut refs = HashMap::new();
+    for row in data.latest_candles {
+        if row.granularity != "D" { continue; }
+        let latest = row.candles.into_iter().filter(|c| c.complete)
+            .filter_map(|c| Some((time_ms(&c.time).ok()?, positive_price(&c.mid?.c)?)))
+            .max_by_key(|(time, _)| *time);
+        if let Some((_, price)) = latest { refs.insert(row.instrument, price); }
+    }
+    refs
+}
+fn decode_quotes(data: Pricing, requested: &[String], refs: &HashMap<String, f64>) -> HashMap<String, SourceQuote> {
+    let mut result = HashMap::new();
+    for row in data.prices {
+        if !requested.contains(&row.instrument) { continue; }
+        let Some(bid) = row.bids.iter().filter_map(|b| positive_price(&b.price)).reduce(f64::max) else { continue };
+        let Some(ask) = row.asks.iter().filter_map(|a| positive_price(&a.price)).reduce(f64::min) else { continue };
+        if ask < bid { continue; }
+        let Ok(timestamp_ms) = time_ms(&row.time) else { continue; };
+        result.insert(row.instrument.clone(), SourceQuote {
+            price: bid + (ask - bid) / 2.0,
+            previous_day_price: refs.get(&row.instrument).copied(),
+            timestamp_ms: Some(timestamp_ms),
+            ..SourceQuote::default()
+        });
+    }
+    result
+}
+pub fn watchlist_quotes(symbols: &[String]) -> Result<HashMap<String, SourceQuote>, ProviderError> {
+    if symbols.is_empty() { return Ok(HashMap::new()); }
+    let cfg = config()?;
+    let rows = instruments(&cfg)?;
+    let requested: Vec<String> = symbols.iter().filter(|s| rows.iter().any(|r| r.name == **s)).cloned().collect();
+    if requested.is_empty() { return Ok(HashMap::new()); }
+    let list = requested.iter().map(|s| encode_component(s)).collect::<Vec<_>>().join("%2C");
+    let prices: Pricing = get(&cfg, &format!("/pricing?instruments={list}"))?;
+    let specs = requested.iter().map(|s| encode_component(&format!("{s}:D:M"))).collect::<Vec<_>>().join("%2C");
+    let daily = get::<LatestCandles>(&cfg, &format!("/candles/latest?candleSpecifications={specs}&dailyAlignment=17&alignmentTimezone=America%2FNew_York"))
+        .map(daily_references).unwrap_or_default();
+    Ok(decode_quotes(prices, &requested, &daily))
+}
+
 impl MarketSource for Oanda {
     fn fetch_klines(&self, symbol: &str, tf: Timeframe, limit: u32) -> Result<Vec<Kline>, ProviderError> {
         history(symbol, tf, limit as usize, None)
@@ -206,6 +275,17 @@ impl MarketSource for Oanda {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn watchlist_midpoint_and_completed_reference() {
+        let daily: LatestCandles = serde_json::from_str(r#"{"latestCandles":[{"instrument":"EUR_USD","granularity":"D","candles":[{"time":"1767537000.0","complete":true,"mid":{"o":"1.1","h":"1.2","l":"1.0","c":"1.10000"}},{"time":"1767623400.0","complete":false,"mid":{"o":"1.1","h":"1.2","l":"1.0","c":"1.11100"}}]}]}"#).unwrap();
+        let prices: Pricing = serde_json::from_str(r#"{"prices":[{"instrument":"EUR_USD","time":"1767623400.123","bids":[{"price":"1.10200"}],"asks":[{"price":"1.10220"}]},{"instrument":"USD_JPY","time":"1767623400.0","bids":[],"asks":[]}]}"#).unwrap();
+        let refs = daily_references(daily);
+        let quotes = decode_quotes(prices,&["EUR_USD".into(),"USD_JPY".into()],&refs);
+        assert!((quotes["EUR_USD"].price-1.10210).abs()<1e-10);
+        assert_eq!(quotes["EUR_USD"].previous_day_price,Some(1.1));
+        assert_eq!(quotes["EUR_USD"].timestamp_ms,Some(1767623400123));
+        assert!(!quotes.contains_key("USD_JPY"));
+    }
     #[test]
     fn timestamp_and_granularity() {
         assert_eq!(time_ms("1767623400.123456789").unwrap(), 1767623400123);

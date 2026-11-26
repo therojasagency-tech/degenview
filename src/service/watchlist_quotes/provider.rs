@@ -71,6 +71,7 @@ pub fn chunk_size(source: DataSource) -> usize {
         DataSource::Gate => 2_500,
         DataSource::Mexc => 2_500,
         DataSource::DexScreener => 30,
+        DataSource::Oanda => 50,
         _ => 100,
     }
 }
@@ -108,7 +109,13 @@ impl QuoteProvider for LiveProvider {
             DataSource::DexScreener => Ok(dexscreener(requests)),
             DataSource::Alpaca => alpaca(requests).map(Outcome::from_quotes),
             DataSource::Polymarket | DataSource::Kalshi => Ok(prediction(source, requests)),
-            DataSource::CoinMarketCap | DataSource::OpenChart | DataSource::Oanda => Ok(Outcome::default()),
+            DataSource::Oanda => {
+                let symbols = symbols_of(requests);
+                crate::service::market::oanda::watchlist_quotes(&symbols)
+                    .map(Outcome::from_quotes)
+                    .map_err(|error| if error.is_rate_limited() { QuoteFailure::RateLimited } else { QuoteFailure::Failed(error.to_string()) })
+            }
+            DataSource::CoinMarketCap | DataSource::OpenChart => Ok(Outcome::default()),
         }
     }
 

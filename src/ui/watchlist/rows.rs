@@ -292,6 +292,19 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
     let quote = quote.filter(|_| item.card.is_none());
     let direction = watchlist::quote::direction(quote);
     let source = Some(item.instrument.source);
+    let oanda_precision = if item.instrument.source == DataSource::Oanda {
+        crate::service::market::oanda::display_precision(&item.instrument.symbol)
+    } else { None };
+    let last_text = || {
+        if let (Some(p), Some(v)) = (oanda_precision, quote.and_then(|q| q.last)) {
+            format!("{v:.prec$}", prec = usize::from(p))
+        } else { watchlist::quote::last_text(quote, source) }
+    };
+    let change_text = || {
+        if let (Some(p), Some(v)) = (oanda_precision, quote.and_then(|q| q.change)) {
+            format!("{v:+.prec$}", prec = usize::from(p))
+        } else { watchlist::quote::change_text(quote, source) }
+    };
     let change_color =
         direction_color(direction, ui.visuals().weak_text_color()).gamma_multiply(alpha);
     // Two-line rows carry the change under the price, unless it has a column of its own.
@@ -310,7 +323,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
                         Color32::from_rgb(255, 159, 10).gamma_multiply(alpha),
                     )
                 } else {
-                    let price = watchlist::quote::last_text(quote, source);
+                    let price = last_text();
                     if change_under_price {
                         let price = kit::digits(
                             ui,
@@ -322,7 +335,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
                         );
                         let change = kit::digits(
                             ui,
-                            &watchlist::quote::change_text(quote, source),
+                            &change_text(),
                             size::SUBHEADLINE,
                             kit::REGULAR,
                             change_color,
@@ -341,7 +354,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
                     (price, text_color)
                 }
             }
-            WatchlistColumn::Change => (watchlist::quote::change_text(quote, source), change_color),
+            WatchlistColumn::Change => (change_text(), change_color),
             WatchlistColumn::ChangePercent => {
                 (watchlist::quote::percent_text(quote, source), change_color)
             }
