@@ -188,6 +188,11 @@ pub const GECKOTERMINAL_PAGE: usize = 1_000;
 /// How far back GeckoTerminal's free API reaches, in days.
 pub const GECKOTERMINAL_HISTORY_DAYS: i64 = 180;
 
+const OPENCHART: [Timeframe; 10] = [
+    seconds(1), minutes(1), minutes(5), minutes(15), minutes(30),
+    hours(1), hours(4), Timeframe::DAY_1, Timeframe::WEEK_1, Timeframe::MONTH_1,
+];
+
 impl DataSource {
     /// The candle lengths the source serves itself, shortest first. Empty for a source that has no
     /// candles to ask for (CoinGecko builds them from prices, the line charts are not candles).
@@ -201,6 +206,7 @@ impl DataSource {
             Self::Gate => &GATE,
             Self::Mexc => &MEXC,
             Self::Alpaca => &ALPACA,
+            Self::OpenChart => &OPENCHART,
             Self::DexScreener => &GECKOTERMINAL,
             Self::CoinGecko | Self::Polymarket | Self::Kalshi | Self::CoinMarketCap => &[],
         }
@@ -221,12 +227,16 @@ impl DataSource {
     /// holidays and early closes that nothing here knows, so a countdown would run through a
     /// closed market.
     pub fn counts_down_bars(self) -> bool {
-        !self.natives().is_empty() && self.grid() == Grid::Utc
+        self != Self::OpenChart && !self.natives().is_empty() && self.grid() == Grid::Utc
     }
 
     /// How `timeframe` is made from the source's own candles; `None` for a source that has none
     /// or whose candles no fold of reaches it.
     pub fn plan(self, timeframe: Timeframe) -> Option<FoldPlan> {
+        // The provider serves multiple exchange calendars. Do not synthesize intervals on a UTC grid.
+        if self == Self::OpenChart && !self.natives().contains(&timeframe) {
+            return None;
+        }
         FoldPlan::in_grid(self.grid(), timeframe, self.natives())
     }
 
@@ -247,6 +257,7 @@ impl DataSource {
             // Their lines are drawn from points a minute or more apart.
             Self::Polymarket | Self::Kalshi => !timeframe.is_subminute(),
             Self::CoinMarketCap => true,
+            Self::OpenChart => self.natives().contains(&timeframe),
         }
     }
 
@@ -269,6 +280,7 @@ impl DataSource {
                 let page_days = plan.base().nominal_ms() * GECKOTERMINAL_PAGE as i64 / 86_400_000;
                 page_days < GECKOTERMINAL_HISTORY_DAYS
             }),
+            Self::OpenChart => self.natives().contains(&timeframe),
             Self::CoinGecko | Self::Polymarket | Self::Kalshi | Self::CoinMarketCap => false,
         }
     }

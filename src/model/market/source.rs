@@ -19,6 +19,7 @@ pub enum DataSource {
     Polymarket,
     Kalshi,
     CoinMarketCap,
+    OpenChart,
 }
 
 impl DataSource {
@@ -37,6 +38,7 @@ impl DataSource {
             Self::Polymarket => "Polymarket",
             Self::Kalshi => "Kalshi",
             Self::CoinMarketCap => "CoinMarketCap",
+            Self::OpenChart => "TradingView (OpenChart)",
         }
     }
 
@@ -56,11 +58,12 @@ impl DataSource {
             Self::Polymarket => "POLYMARKET",
             Self::Kalshi => "KALSHI",
             Self::CoinMarketCap => "CMC",
+            Self::OpenChart => "OPENCHART",
         }
     }
 
     /// Every source, in the order the pickers list them.
-    pub const ALL: [DataSource; 13] = [
+    pub const ALL: [DataSource; 14] = [
         DataSource::Binance,
         DataSource::Coinbase,
         DataSource::Okx,
@@ -74,6 +77,7 @@ impl DataSource {
         DataSource::Polymarket,
         DataSource::Kalshi,
         DataSource::CoinMarketCap,
+        DataSource::OpenChart,
     ];
 
     /// The source a `watchlist_slug` names, in any case.

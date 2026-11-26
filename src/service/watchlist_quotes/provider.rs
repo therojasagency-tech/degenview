@@ -108,7 +108,7 @@ impl QuoteProvider for LiveProvider {
             DataSource::DexScreener => Ok(dexscreener(requests)),
             DataSource::Alpaca => alpaca(requests).map(Outcome::from_quotes),
             DataSource::Polymarket | DataSource::Kalshi => Ok(prediction(source, requests)),
-            DataSource::CoinMarketCap => Ok(Outcome::default()),
+            DataSource::CoinMarketCap | DataSource::OpenChart => Ok(Outcome::default()),
         }
     }
 

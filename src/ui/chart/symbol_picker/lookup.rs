@@ -32,7 +32,7 @@ impl Lookup {
             venue: chosen,
             unsupported: None,
         };
-        if scope == Scope::Dashboards {
+        if scope == Scope::Dashboards || chosen == Some(DataSource::OpenChart) {
             return plain;
         }
         let Some(VenueQuery {

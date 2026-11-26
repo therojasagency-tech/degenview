@@ -220,7 +220,7 @@ pub fn market_item(source: DataSource, symbol: &str) -> Result<WatchlistInstrume
     if symbol.chars().count() > MAX_SYMBOL_LEN
         || symbol
             .chars()
-            .any(|c| c.is_control() || c == '|' || c == ':')
+            .any(|c| c.is_control() || c == '|' || (c == ':' && source != DataSource::OpenChart))
     {
         return Err("Symbol contains unsupported characters".to_owned());
     }
@@ -345,6 +345,15 @@ fn instrument_from(token: &str) -> Result<WatchlistInstrument, String> {
             );
             found.display_name = Some(title);
             Ok(found)
+        }
+        DataSource::OpenChart => {
+            let valid = rest.split_once(':').is_some_and(|(venue, ticker)| {
+                !venue.is_empty() && !ticker.is_empty()
+                    && venue.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+                    && !ticker.contains([':', '|']) && !ticker.contains(char::is_whitespace)
+            });
+            if !valid { return Err("OpenChart requires EXCHANGE:SYMBOL".to_owned()); }
+            Ok(item(source, &rest, &rest, &rest))
         }
         DataSource::CoinMarketCap => Err("CoinMarketCap index charts aren't markets".to_owned()),
     }

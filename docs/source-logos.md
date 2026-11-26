@@ -8,3 +8,5 @@ not licensed under the application's GPL-3.0-only terms.
 A new provider adds its mark here (one file named after the provider, `.svg` where the owner publishes one),
 an arm in `ui::kit::source_logo::source`, and a line in this list. The OKX, Kraken, Bybit, Gate.io and
 MEXC files redraw the owners' marks as vectors.
+
+`openchart_bridge.svg` is an original generic data-bridge icon, not an official TradingView or OpenChart logo.

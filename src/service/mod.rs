@@ -195,6 +195,7 @@ pub fn for_source(source: DataSource) -> &'static dyn MarketSource {
         DataSource::Polymarket => &market::polymarket::POLYMARKET,
         DataSource::Kalshi => &market::kalshi::KALSHI,
         DataSource::CoinMarketCap => &market::cmc::COIN_MARKET_CAP,
+        DataSource::OpenChart => &market::openchart::OPENCHART,
     }
 }
 
