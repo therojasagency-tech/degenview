@@ -180,6 +180,8 @@ pub trait MarketSource {
     }
 }
 
+pub use market::oanda::display_precision as oanda_display_precision;
+
 pub fn for_source(source: DataSource) -> &'static dyn MarketSource {
     match source {
         DataSource::Binance => &market::binance::BINANCE,
@@ -196,6 +198,7 @@ pub fn for_source(source: DataSource) -> &'static dyn MarketSource {
         DataSource::Kalshi => &market::kalshi::KALSHI,
         DataSource::CoinMarketCap => &market::cmc::COIN_MARKET_CAP,
         DataSource::OpenChart => &market::openchart::OPENCHART,
+        DataSource::Oanda => &market::oanda::OANDA,
     }
 }
 

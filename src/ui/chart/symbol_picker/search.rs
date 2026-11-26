@@ -26,7 +26,7 @@ const RELATED_LIMIT: usize = 6;
 
 /// The markets the picker lists, in the order the providers are asked (and so the order exchanges
 /// that list the same market appear in).
-pub const PROVIDERS: [DataSource; 11] = [
+pub const PROVIDERS: [DataSource; 12] = [
     DataSource::Binance,
     DataSource::Coinbase,
     DataSource::Okx,
@@ -38,6 +38,7 @@ pub const PROVIDERS: [DataSource; 11] = [
     DataSource::CoinGecko,
     DataSource::Alpaca,
     DataSource::OpenChart,
+    DataSource::Oanda,
 ];
 
 /// The prediction markets the Predictions tab asks, in the order their answers are listed.
@@ -83,7 +84,7 @@ impl Scope {
         match self {
             Self::All | Self::Watchlists => PROVIDERS.contains(&source),
             Self::Stocks => source == DataSource::Alpaca,
-            Self::Crypto => PROVIDERS.contains(&source) && !matches!(source, DataSource::Alpaca | DataSource::OpenChart),
+            Self::Crypto => PROVIDERS.contains(&source) && !matches!(source, DataSource::Alpaca | DataSource::OpenChart | DataSource::Oanda),
             Self::Predictions => PREDICTION_PROVIDERS.contains(&source),
             Self::Dashboards => source == DataSource::CoinMarketCap,
         }
@@ -154,7 +155,7 @@ pub fn market_kind(source: DataSource) -> &'static str {
         DataSource::Alpaca => tr!("Stock"),
         DataSource::Polymarket | DataSource::Kalshi => tr!("Prediction"),
         DataSource::CoinMarketCap => tr!("Index"),
-        DataSource::OpenChart => tr!("Market"),
+        DataSource::OpenChart | DataSource::Oanda => tr!("Market"),
         _ => tr!("Crypto"),
     }
 }
@@ -362,7 +363,7 @@ impl Related {
             found.insert(asset.clone(), answer);
             false
         });
-        if !PROVIDERS.contains(&of.source) || matches!(of.source, DataSource::Alpaca | DataSource::OpenChart) {
+        if !PROVIDERS.contains(&of.source) || matches!(of.source, DataSource::Alpaca | DataSource::OpenChart | DataSource::Oanda) {
             return Some(Vec::new());
         }
         let asset = of.base_asset();

@@ -121,6 +121,21 @@ impl Fetched {
     }
 }
 
+fn market_precision(source: DataSource, symbol: &str) -> Option<u8> {
+    if source == DataSource::Oanda {
+        if let Some(precision) = crate::service::oanda_display_precision(symbol) { return Some(precision); }
+    }
+    if !matches!(source, DataSource::Oanda | DataSource::OpenChart) { return None; }
+    let ticker = symbol.split_once(':').map_or(symbol, |(_, s)| s);
+    let ticker = ticker.strip_suffix("_TEST").unwrap_or(ticker).replace('_', "").to_ascii_uppercase();
+    const FX: &[&str] = &["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "NOK", "SEK", "DKK", "SGD", "HKD", "PLN", "MXN", "ZAR", "TRY", "CNH", "CZK", "HUF"];
+    if ticker.len() != 6 || !ticker.is_ascii() { return None; }
+    let (base, quote) = ticker.split_at(3);
+    if FX.contains(&base) && FX.contains(&quote) {
+        Some(if quote == "JPY" { 3 } else { 5 })
+    } else { None }
+}
+
 impl Chart {
     pub(super) fn new(
         id: u64,
@@ -136,9 +151,12 @@ impl Chart {
 
     /// A chart that has not fetched yet, for callers that set up its prediction choices first.
     fn blank(id: u64, symbol: impl Into<String>, source: DataSource) -> Self {
+        let symbol = symbol.into();
+        let mut chart = ChartCard::default();
+        chart.appearance_mut().axis_decimals = market_precision(source, &symbol);
         Self {
             id,
-            symbol: symbol.into(),
+            symbol,
             source,
             candles: Vec::new(),
             loading: false,
@@ -148,7 +166,7 @@ impl Chart {
             older: OlderHistory::default(),
             older_inbox: None,
             fetch_generation: Arc::new(AtomicU64::new(0)),
-            chart: ChartCard::default(),
+            chart,
             scale_mode: PriceScaleMode::default(),
             indicators: IndicatorConfig::default(),
             drawings: Vec::new(),
@@ -212,6 +230,7 @@ impl Chart {
             | DataSource::Alpaca => self.source.display_symbol(&self.symbol),
             DataSource::DexScreener => self.source.base_asset(&self.display_title()),
             DataSource::OpenChart => format!("OPENCHART:{}", self.symbol),
+            DataSource::Oanda => format!("OANDA:{}", self.symbol),
             DataSource::Polymarket | DataSource::Kalshi | DataSource::CoinMarketCap => {
                 String::new()
             }
@@ -241,8 +260,14 @@ impl Chart {
     /// A market that takes no indicators leaves the chart without the ones it had.
     pub(super) fn replace_market(&mut self, item: &WatchlistInstrument) {
         let from = self.drawing_market();
+        let old_precision = market_precision(self.source, &self.symbol);
         self.symbol = item.instrument.symbol.clone();
         self.source = item.instrument.source;
+        let new_precision = market_precision(self.source, &self.symbol);
+        let appearance = self.chart.appearance_mut();
+        if appearance.axis_decimals.is_none() || appearance.axis_decimals == old_precision {
+            appearance.axis_decimals = new_precision;
+        }
         self.apply_watchlist_metadata(item);
         self.clear_market_data();
         self.file_drawings(&from);
@@ -268,8 +293,14 @@ impl Chart {
     pub(super) fn swap_market(&mut self, state: MarketState) -> MarketState {
         let current = self.market_state();
         let from = self.drawing_market();
+        let old_precision = market_precision(self.source, &self.symbol);
         self.symbol = state.symbol;
         self.source = state.source;
+        let new_precision = market_precision(self.source, &self.symbol);
+        let appearance = self.chart.appearance_mut();
+        if appearance.axis_decimals.is_none() || appearance.axis_decimals == old_precision {
+            appearance.axis_decimals = new_precision;
+        }
         self.chart.set_title(state.title);
         self.image_url = state.image_url;
         self.clear_market_data();
@@ -305,7 +336,11 @@ impl Chart {
         chart.fetch(timeframe, ctx);
         chart.scale_mode = scale_mode;
         chart.chart.set_y_zoom(saved.y_zoom);
-        chart.chart.set_appearance(saved.appearance);
+        let mut appearance = saved.appearance;
+        if appearance.axis_decimals.is_none() {
+            appearance.axis_decimals = market_precision(chart.source, &chart.symbol);
+        }
+        chart.chart.set_appearance(appearance);
         chart.chart.set_pine_instances(instances);
         chart.chart.set_visible_candles(saved.candle_count as usize);
         chart.chart.restore_viewport(saved.viewport);

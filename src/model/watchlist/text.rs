@@ -346,6 +346,13 @@ fn instrument_from(token: &str) -> Result<WatchlistInstrument, String> {
             found.display_name = Some(title);
             Ok(found)
         }
+        DataSource::Oanda => {
+            let symbol = rest.to_ascii_uppercase();
+            if !symbol.contains('_') || !symbol.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+                return Err("OANDA requires an instrument such as EUR_USD".to_owned());
+            }
+            Ok(item(source, &symbol, &symbol, &symbol))
+        }
         DataSource::OpenChart => {
             let valid = rest.split_once(':').is_some_and(|(venue, ticker)| {
                 !venue.is_empty() && !ticker.is_empty()

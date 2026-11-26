@@ -76,6 +76,7 @@ pub fn icon_base_symbol(item: &WatchlistInstrument) -> String {
             .unwrap_or_else(|| item.name.clone()),
         DataSource::Alpaca => symbol.to_uppercase(),
         DataSource::CoinMarketCap => "CMC".to_owned(),
+        DataSource::Oanda => symbol.to_uppercase(),
         DataSource::OpenChart => symbol.split_once(':').map_or(symbol.as_str(), |(_, ticker)| ticker).to_uppercase(),
     }
 }
