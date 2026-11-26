@@ -1,0 +1,52 @@
+
+name: DegenView Custom - Mac ARM64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Download source
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustc --version
+          uname -m
+
+      - name: Compile and package
+        run: |
+          chmod +x tools/bundle.sh
+          ./tools/bundle.sh
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist
+          mkdir -p dmg-root
+          ditto target/DegenView.app dmg-root/DegenView.app
+          ln -s /Applications dmg-root/Applications
+          hdiutil create \
+            -volname "DegenView Custom" \
+            -srcfolder dmg-root \
+            -ov \
+            -format UDZO \
+            dist/DegenView-Custom-arm64.dmg
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DegenView-Custom-Mac-ARM64
+          path: dist/*.dmg
+          retention-days: 14
