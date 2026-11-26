@@ -7,13 +7,24 @@ import { resolve } from "node:path";
 import { makeClient, type ClientOptions } from "../server/data/providers/tradingview/client";
 import { createAdapter, createHandler } from "./adapter.mjs";
 import { authorizeBrowser, macBrowserInteraction } from "./browser-login";
+import { startBridgeServer } from "./live-server";
 
-export async function openChartHandler(token: string, options: ClientOptions = {}) {
+async function openChartRuntime(token: string, options: ClientOptions = {}) {
   const client = await Effect.runPromise(makeClient(options));
-  return createHandler(createAdapter(client, {
+  const handler = createHandler(createAdapter(client, {
     runPromise: Effect.runPromise,
     scoped: Effect.scoped,
   }), token);
+  return {client,handler};
+}
+
+export async function openChartHandler(token: string, options: ClientOptions = {}) {
+  return (await openChartRuntime(token, options)).handler;
+}
+
+export async function openChartServer(token: string, options: ClientOptions = {}) {
+  const {client,handler} = await openChartRuntime(token, options);
+  return startBridgeServer(client, token, handler);
 }
 
 if (import.meta.main) {
@@ -27,27 +38,20 @@ if (import.meta.main) {
   const login = process.env.DEGENVIEW_TV_LOGIN ?? "anonymous";
   if (login !== "anonymous" && login !== "browser") throw new Error("Invalid TradingView login mode.");
   const session = login === "browser" ? await authorizeBrowser(macBrowserInteraction) : undefined;
-  const handler = await openChartHandler(token, session ? {
+  const server = await openChartServer(token, session ? {
     credential: () => Effect.succeed(session),
   } : {});
   console.log(session ? "TradingView browser session connected." : "TradingView anonymous session selected.");
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    idleTimeout: 120,
-    maxRequestBodySize: 1024,
-    fetch: handler,
-  });
   // The parent discovers the ephemeral port; credentials are never printed.
   console.log(JSON.stringify({ version: 1, port: server.port }));
   const child = app ? Bun.spawn([app], {
     env: { ...process.env, DEGENVIEW_BRIDGE_PORT: String(server.port), DEGENVIEW_BRIDGE_TOKEN: token },
     stdin: "ignore", stdout: "inherit", stderr: "inherit",
   }) : undefined;
-  const stop = () => { child?.kill(); server.stop(true); };
+  const stop = () => { child?.kill(); server.stop(); };
   process.once("SIGTERM", stop);
   process.once("SIGINT", stop);
   if (child) {
-    try { process.exitCode = await child.exited; } finally { server.stop(true); }
+    try { process.exitCode = await child.exited; } finally { server.stop(); }
   }
 }

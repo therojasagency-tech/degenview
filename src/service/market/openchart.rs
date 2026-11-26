@@ -32,7 +32,7 @@ struct History {
 }
 
 #[derive(Deserialize)]
-struct Bar {
+pub(super) struct Bar {
     time: i64,
     open: f64,
     high: f64,
@@ -72,7 +72,7 @@ fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ProviderError> {
     serde_json::from_str(&body).map_err(ProviderError::data)
 }
 
-fn resolution(tf: Timeframe) -> Result<&'static str, ProviderError> {
+pub(super) fn resolution(tf: Timeframe) -> Result<&'static str, ProviderError> {
     let token = match tf {
         Timeframe::SECOND_1 => "1s",
         Timeframe::MINUTE_1 => "1m",
@@ -94,8 +94,11 @@ fn decode_history(history: History, symbol: &str, tf: Timeframe, token: &str) ->
         || history.resolution != token || history.adjustment != "raw" {
         return Err(ProviderError::data("OpenChart response identity mismatch"));
     }
-    let mut bars = Vec::with_capacity(history.bars.len());
-    for bar in history.bars {
+    let bars = history.bars.into_iter().map(|bar| decode_bar(bar, tf)).collect::<Result<Vec<_>, _>>()?;
+    Ok(super::candles::normalize(bars))
+}
+
+pub(super) fn decode_bar(bar: Bar, tf: Timeframe) -> Result<Kline, ProviderError> {
         if bar.time <= 0 || bar.time > 253_402_214_399_999
             || bar.high < bar.open.max(bar.close)
             || bar.low > bar.open.min(bar.close)
@@ -110,12 +113,10 @@ fn decode_history(history: History, symbol: &str, tf: Timeframe, token: &str) ->
         } else {
             bar.time + tf.nominal_ms() - 1
         };
-        bars.push(Kline {
+        Ok(Kline {
             open_time: bar.time, close_time, open: bar.open, high: bar.high, low: bar.low,
             close: bar.close, volume: bar.volume.unwrap_or(0.0),
-        });
-    }
-    Ok(super::candles::normalize(bars))
+        })
 }
 
 impl MarketSource for OpenChart {

@@ -88,6 +88,10 @@ impl ChartWorkspace {
                     .api_symbol()
                     .eq_ignore_ascii_case(symbol)
         }) {
+            // Do not append a bar of a newly selected timeframe to the previous history.
+            if source == DataSource::OpenChart && chart.data_timeframe != Some(timeframe) {
+                continue;
+            }
             if let Some(open_time) =
                 chart
                     .live_fold

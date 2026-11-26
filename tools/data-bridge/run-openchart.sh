@@ -22,13 +22,13 @@ stage="$(mktemp -d "$root/.degenview-bridge.XXXXXX")"
 child=""
 cleanup() {
   if test -n "$child"; then kill "$child" 2>/dev/null || true; fi
-  rm -f "$stage/adapter.mjs" "$stage/openchart-entry.ts" "$stage/native-smoke.ts" "$stage/browser-login.ts" "$stage/browser-login-smoke.ts"
+  rm -f "$stage/adapter.mjs" "$stage/openchart-entry.ts" "$stage/native-smoke.ts" "$stage/browser-login.ts" "$stage/browser-login-smoke.ts" "$stage/live-server.ts"
   rmdir "$stage"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-cp "$bridge/adapter.mjs" "$bridge/openchart-entry.ts" "$bridge/native-smoke.ts" "$bridge/browser-login.ts" "$bridge/browser-login-smoke.ts" "$stage/"
+cp "$bridge/adapter.mjs" "$bridge/openchart-entry.ts" "$bridge/native-smoke.ts" "$bridge/browser-login.ts" "$bridge/browser-login-smoke.ts" "$bridge/live-server.ts" "$stage/"
 cd "$root"
 bun "$stage/$entry" &
 child=$!

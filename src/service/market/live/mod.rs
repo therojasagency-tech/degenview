@@ -12,6 +12,7 @@ mod gateio;
 mod kraken;
 mod mexc;
 mod okx;
+mod openchart;
 
 /// The most bars the inbox keeps. A feed nobody reads for days (a background tab, a hidden
 /// window) still sees one new bar per symbol per interval, so this is only a backstop.
@@ -74,6 +75,19 @@ impl LiveFeed {
         base: Timeframe,
         ctx: egui::Context,
     ) -> Option<Self> {
+        if source == DataSource::OpenChart {
+            let inbox = Arc::new(LiveInbox::default());
+            let shutdown = Arc::new(AtomicBool::new(false));
+            let mut unique = symbols.clone();
+            unique.sort(); unique.dedup();
+            for symbol in unique {
+                let inbox = Arc::clone(&inbox);
+                let shutdown = Arc::clone(&shutdown);
+                let ctx = ctx.clone();
+                std::thread::spawn(move || openchart::run(symbol, base, inbox, shutdown, ctx));
+            }
+            return Some(Self { inbox, signature: (symbols, base), shutdown });
+        }
         let (sessions, parse): (Vec<Session>, Parser) = match source {
             DataSource::Binance => (
                 vec![binance::session(&symbols, base)],

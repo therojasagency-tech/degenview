@@ -93,13 +93,14 @@ impl DataSource {
 
     /// The sources whose forming candle a chart takes from a socket instead of waiting for the
     /// next refresh.
-    pub const CANDLE_STREAMS: [DataSource; 6] = [
+    pub const CANDLE_STREAMS: [DataSource; 7] = [
         DataSource::Binance,
         DataSource::Okx,
         DataSource::Kraken,
         DataSource::Bybit,
         DataSource::Gate,
         DataSource::Mexc,
+        DataSource::OpenChart,
     ];
 
     /// The sources whose watchlist prices come from a shared ticker socket, REST filling in.

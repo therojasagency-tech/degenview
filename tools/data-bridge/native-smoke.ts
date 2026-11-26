@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import type WebSocket from "ws";
+import WebSocket from "ws";
 import { encodeFrame, parseFrames } from "../server/data/providers/tradingview/protocol";
-import { openChartHandler } from "./openchart-entry";
+import { openChartServer } from "./openchart-entry";
 
 const time = Date.UTC(2026, 0, 5, 14, 30);
 class FixtureSocket extends EventEmitter {
@@ -31,7 +31,7 @@ class FixtureSocket extends EventEmitter {
 
 const token = "offline-fixture".repeat(3);
 const sockets: FixtureSocket[] = [];
-const handler = await openChartHandler(token, {
+const server = await openChartServer(token, {
   fetch: async () => Response.json({ symbols: [
     { symbol: "EURUSD", description: "Euro / US Dollar", type: "forex", source_id: "OANDA", currency_code: "USD" },
     { symbol: "EURUSD", description: "Euro / US Dollar", type: "forex", source_id: "FXCM", currency_code: "USD" },
@@ -42,7 +42,6 @@ const handler = await openChartHandler(token, {
     return socket as unknown as WebSocket;
   },
 });
-const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler });
 try {
   const get = (path: string) => fetch(new URL(path, server.url), {
     headers: { authorization: "Bearer " + token },
@@ -76,7 +75,34 @@ try {
     });
     assert.equal(await child.exited, 0, "Rust bridge probe failed");
   }
+  const liveUrl = new URL("/v1/live?" + new URLSearchParams({symbol:"OANDA:EURUSD",resolution:"1m"}), server.url);
+  liveUrl.protocol = "ws:";
+  const events: any[] = [];
+  const live = new WebSocket(liveUrl, {headers:{authorization:"Bearer " + token}});
+  try {
+    await new Promise<void>((resolve,reject) => {
+      const timeout = setTimeout(() => reject(new Error("Live smoke timeout")), 8000);
+      const finish = (error?: Error) => { clearTimeout(timeout); error ? reject(error) : resolve(); };
+      live.on("error", finish);
+      live.on("close", () => finish(new Error("Live closed before fixture")));
+      live.on("message", data => {
+        const event = JSON.parse(data.toString());
+        events.push(event);
+        if (events.some(e => e.type === "bars") && events.some(e => e.type === "status")) finish();
+      });
+    });
+    assert.equal(events.find(e=>e.type==="bars").bars[0].close,1.15);
+    assert.equal(events.find(e=>e.type==="status").status.mode,"live");
+    assert.ok(events.every(e=>e.symbol==="OANDA:EURUSD" && e.resolution==="1m"));
+  } finally {
+    live.close();
+  }
+  const deadline = Date.now()+3000;
+  while (!sockets.at(-1)?.terminated && Date.now()<deadline) await Bun.sleep(20);
+  assert.equal(sockets.at(-1)?.terminated,true,"local disconnect must release upstream socket");
+  assert.equal((await fetch(new URL("/v1/live?symbol=OANDA:EURUSD&resolution=1m",server.url))).status,401);
+  console.log("Native OpenChart client + local WebSocket: offline smoke passed");
   console.log("Native OpenChart client + local HTTP bridge: offline smoke passed");
 } finally {
-  server.stop(true);
+  server.stop();
 }

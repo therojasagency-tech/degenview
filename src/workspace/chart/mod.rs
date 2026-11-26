@@ -426,6 +426,12 @@ impl Chart {
 
     /// How long after a fetch began the next one is due.
     pub(super) fn refresh_after(&self) -> Duration {
+        // A recent actual bar update allows a slower reconciliation; quiet or failed feeds
+        // retain the normal REST cadence, including history after a disconnect.
+        if self.source == DataSource::OpenChart && self.error.is_none()
+            && self.live.is_some_and(|mark| mark.guard_for(Instant::now() - Duration::from_secs(15)).is_some()) {
+            return Duration::from_secs(30);
+        }
         match self.refresh_cadence() {
             SLOW_REFRESH_INTERVAL if self.error.is_some() => SLOW_RETRY_INTERVAL,
             cadence => cadence,
