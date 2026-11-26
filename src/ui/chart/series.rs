@@ -398,12 +398,12 @@ pub(crate) fn paint_candle(
         Pos2::new(snapped.body.1, rows.body.1),
     );
     if let Fill::Solid(fill) = look.body {
-        painter.rect_filled(body, 0.5, frame.fade(index, color(fill)));
+        painter.rect_filled(body, 0.0, frame.fade(index, color(fill)));
     }
     if let Some(border) = look.border {
         painter.rect_stroke(
             body,
-            0.5,
+            0.0,
             Stroke::new(1.0, frame.fade(index, color(border))),
             StrokeKind::Inside,
         );
@@ -412,41 +412,122 @@ pub(crate) fn paint_candle(
 
 // MARK: OHLC and high-low bars
 
+/// OHLC geometry in physical pixels, not logical points. At tight spacing only the high-low
+/// stem fits. A tick is allowed only if there is room for it and a gap to the next bar.
+#[derive(Clone, Copy, Debug)]
+struct BarGeometry {
+    ppp: f32,
+    stem_px: f32,
+    tick_px: f32,
+}
+impl BarGeometry {
+    fn new(slot: f32, pixels_per_point: f32, thin: bool, ticks: bool) -> Self {
+        let ppp = sane_pixels_per_point(pixels_per_point);
+        let slot = if slot.is_finite() { slot.max(0.0) } else { 0.0 };
+        let slot_px = slot * ppp;
+        let room = (slot_px.floor() - 1.0).max(1.0);
+        let stem_px = if thin || slot_px < 3.0 {
+            1.0
+        } else {
+            ((slot * 0.12).clamp(1.0, 2.5) * ppp).round().clamp(1.0, room)
+        };
+        // Hide horizontal Open/Close marks at small zoom, even if enabled in style.
+        // Bound each side to its own slot including a pixel of separation.
+        let tick_px = if ticks && slot >= 3.0 && slot_px >= 6.0 {
+            (slot_px * 0.34).floor().min((7.0 * ppp).floor())
+                .min(((slot_px.floor() - stem_px - 1.0) / 2.0).floor().max(0.0))
+        } else {
+            0.0
+        };
+        Self { ppp, stem_px, tick_px }
+    }
+
+    fn column(self, x: f32) -> f32 {
+        wick_column(x, self.stem_px, self.ppp)
+    }
+
+    fn row(self, y: f32) -> f32 {
+        (y * self.ppp).round()
+    }
+}
+
+struct OhlcColumn {
+    column: f32,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+    tint: Color32,
+}
+
+impl OhlcColumn {
+    fn absorb(&mut self, later: Self) {
+        self.high = self.high.max(later.high);
+        self.low = self.low.min(later.low);
+        self.close = later.close;
+        self.tint = later.tint;
+    }
+}
+
+/// Draw square, pixel-aligned rectangles, not anti-aliased line strokes with rounded end caps.
+fn paint_ohlc_column(frame: &SeriesFrame, geometry: BarGeometry, bar: &OhlcColumn) {
+    let left = bar.column;
+    let right = left + geometry.stem_px;
+    let ppp = geometry.ppp;
+    let top = geometry.row(frame.y(bar.high).min(frame.y(bar.low)));
+    let bottom = geometry.row(frame.y(bar.high).max(frame.y(bar.low))).max(top + 1.0);
+    if ![left, right, top, bottom].into_iter().all(f32::is_finite) { return; }
+    let rect = |x0: f32, y0: f32, x1: f32, y1: f32| {
+        Rect::from_min_max(Pos2::new(x0 / ppp, y0 / ppp), Pos2::new(x1 / ppp, y1 / ppp))
+    };
+    frame.painter.rect_filled(rect(left, top, right, bottom), 0.0, bar.tint);
+    if geometry.tick_px > 0.0 {
+        let height = geometry.stem_px.min(bottom - top);
+        let tick_row = |price: f64| {
+            (geometry.row(frame.y(price)) - (height / 2.0).floor()).clamp(top, bottom - height)
+        };
+        let open = tick_row(bar.open);
+        let close = tick_row(bar.close);
+        frame.painter.rect_filled(
+            rect(left - geometry.tick_px, open, left, open + height), 0.0, bar.tint);
+        frame.painter.rect_filled(
+            rect(right, close, right + geometry.tick_px, close + height), 0.0, bar.tint);
+    }
+}
+
 fn ohlc_bars(frame: &SeriesFrame, high_low_only: bool) {
     let settings = frame.style.bar_settings().copied().unwrap_or_default();
-    let painter = frame.painter;
-    let tick = (frame.slot_width * 0.34).clamp(1.5, 7.0);
-    let width = if settings.thin {
-        1.0
-    } else {
-        (frame.slot_width * 0.12).clamp(1.0, 2.5)
-    };
+    let geometry = BarGeometry::new(
+        frame.slot_width, frame.painter.ctx().pixels_per_point(),
+        settings.thin, !high_low_only && settings.ticks,
+    );
+    let mut pending: Option<OhlcColumn> = None;
     for (index, bar) in frame.bars.iter().enumerate() {
-        let previous = frame.previous_close_of(index);
-        let tint = color(chart::look::bar_color(
-            &settings,
-            frame.palette,
-            bar,
-            previous,
-            frame.recolor_of(index),
-        ));
-        let tint = frame.fade(index, tint);
-        let stroke = Stroke::new(width, tint);
         let x = (frame.x_for)(index);
-        let (high, low) = drawn_extremes(bar.open, bar.high, bar.low, bar.close);
-        painter.line_segment(
-            [Pos2::new(x, frame.y(high)), Pos2::new(x, frame.y(low))],
-            stroke,
-        );
-        if !high_low_only && settings.ticks {
-            let open_y = frame.y(bar.open);
-            let close_y = frame.y(bar.close);
-            painter.line_segment([Pos2::new(x - tick, open_y), Pos2::new(x, open_y)], stroke);
-            painter.line_segment(
-                [Pos2::new(x, close_y), Pos2::new(x + tick, close_y)],
-                stroke,
-            );
+        if !x.is_finite() || ![bar.open, bar.high, bar.low, bar.close].into_iter().all(f64::is_finite) {
+            continue;
         }
+        let tint = color(chart::look::bar_color(
+            &settings, frame.palette, bar, frame.previous_close_of(index), frame.recolor_of(index),
+        ));
+        let (high, low) = drawn_extremes(bar.open, bar.high, bar.low, bar.close);
+        let next = OhlcColumn {
+            column: geometry.column(x), open: bar.open, high, low, close: bar.close,
+            tint: frame.fade(index, tint),
+        };
+        // At subpixel spacing, one screen column contains several real bars. Draw its
+        // combined high/low once; the underlying OHLC, indicators and drawings stay untouched.
+        match pending.as_mut() {
+            Some(current) if current.column == next.column => current.absorb(next),
+            _ => {
+                if let Some(done) = pending.replace(next) {
+                    paint_ohlc_column(frame, geometry, &done);
+                }
+            }
+        }
+    }
+    if let Some(done) = pending {
+        paint_ohlc_column(frame, geometry, &done);
     }
     if high_low_only && settings.labels {
         extreme_labels(frame);
@@ -1117,6 +1198,59 @@ mod tests {
             None,
         );
         assert_eq!(look.body, Fill::Hollow);
+    }
+
+    #[test]
+    fn candles_have_square_corners() {
+        let bars = [bar(0, 100.0, 104.0, 98.0, 103.0, 1.0)];
+        let shapes = painted(ChartType::Candles, &styled(ChartType::Candles), &bars, &bars, (12.0, 2.0));
+        let (filled, outlines) = rects(&shapes);
+        assert_eq!(filled.len(), 3);
+        assert_eq!(outlines.len(), 1);
+        for rect in filled.iter().chain(outlines.iter()) {
+            assert_eq!(rect.corner_radius, egui::CornerRadius::ZERO);
+        }
+    }
+
+    #[test]
+    fn ohlc_ticks_hide_at_small_spacing_and_return_at_normal_zoom() {
+        let bars = [bar(0, 100.0, 104.0, 98.0, 103.0, 1.0)];
+        let style = styled(ChartType::Bars);
+        for ppp in [1.0_f32, 1.25, 2.0, 3.0] {
+            let compact = painted(ChartType::Bars, &style, &bars, &bars, (1.0, ppp));
+            let normal = painted(ChartType::Bars, &style, &bars, &bars, (12.0, ppp));
+            assert_eq!(rects(&compact).0.len(), 1);
+            assert_eq!(rects(&normal).0.len(), 3);
+            for rect in rects(&normal).0 {
+                for edge in [rect.rect.min.x, rect.rect.max.x, rect.rect.min.y, rect.rect.max.y] {
+                    assert!(on_grid(edge, ppp));
+                }
+            }
+            for slot in [1.0_f32, 3.0, 5.0, 12.0, 40.0] {
+                let g = BarGeometry::new(slot, ppp, false, true);
+                if g.tick_px > 0.0 {
+                    assert!(g.stem_px + 2.0*g.tick_px <= (slot*ppp).floor()-1.0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn compressed_ohlc_bars_keep_the_full_range_in_one_physical_column() {
+        let bars = [
+            bar(0,100.0,101.0,99.0,100.5,1.0),
+            bar(1,100.5,112.0,100.0,101.0,1.0),
+            bar(2,101.0,102.0,88.0,99.0,1.0),
+            bar(3,99.0,100.0,97.0,97.5,1.0),
+        ];
+        let shapes = painted(ChartType::Bars,&styled(ChartType::Bars),&bars,&bars,(0.25,1.0));
+        let (filled, _) = rects(&shapes);
+        assert_eq!(filled.len(),1);
+        let scale = PriceScale::linear(80.0,120.0,0.0,200.0);
+        assert_eq!(filled[0].rect.min.y,scale.y(112.0).round());
+        assert_eq!(filled[0].rect.max.y,scale.y(88.0).round());
+        assert_eq!(filled[0].rect.width(),1.0);
+        assert_eq!(filled[0].fill,Color32::from_rgb(200,0,0));
     }
 
     #[test]

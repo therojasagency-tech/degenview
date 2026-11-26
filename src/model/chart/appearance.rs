@@ -1,8 +1,8 @@
 use crate::model::{ChartCanvas, ChartStyle, PriceFormat, SmallPrices};
 use serde::{Deserialize, Serialize};
 
-/// Per-chart colors, price-axis precision, chart type and canvas. The defaults match SwiftUI's
-/// dark system colors.
+/// Per-chart colors, price-axis precision, chart type and canvas.
+/// The default price-series palette matches the user's TradingView reference.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct ChartAppearance {
@@ -22,8 +22,8 @@ pub struct ChartAppearance {
 impl Default for ChartAppearance {
     fn default() -> Self {
         Self {
-            bullish: [48, 209, 88],
-            bearish: [255, 69, 58],
+            bullish: [4, 153, 129],
+            bearish: [242, 54, 69],
             axis_decimals: None,
             axis_small_prices: SmallPrices::default(),
             style: ChartStyle::default(),
