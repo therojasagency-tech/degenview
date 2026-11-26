@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+mode="${1:---oanda-only}"
+case "$mode" in
+  --oanda-only) ;;
+  --with-openchart) [[ "${DEGENVIEW_TV_AUTHORIZED:-}" == 1 ]] || { echo "Written data access authorization is required for OpenChart." >&2; exit 1; } ;;
+  *) echo "Usage: bash tools/launch-oanda-mac.sh [--oanda-only|--with-openchart]" >&2; exit 2 ;;
+esac
 app="$PWD/target/DegenView.app/Contents/MacOS/DegenView"
 [[ -x "$app" ]] || { echo 'Build with bash tools/bundle.sh first.' >&2; exit 1; }
 command -v python3 >/dev/null || { echo 'Python 3 is required to parse the account list.' >&2; exit 1; }
@@ -45,4 +51,7 @@ else
 fi
 export DEGENVIEW_OANDA_ENV="$environment" DEGENVIEW_OANDA_ACCOUNT="$account" DEGENVIEW_OANDA_TOKEN="$token"
 unset token
+if [[ "$mode" == --with-openchart ]]; then
+    exec bash tools/launch-openchart-mac.sh
+fi
 exec "$app"
