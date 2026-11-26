@@ -4,6 +4,8 @@ import { Effect } from "effect";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { parseSession, type Session } from "../server/data/providers/tradingview/credential";
 import { makeClient, type ClientOptions } from "../server/data/providers/tradingview/client";
 import { createAdapter, createHandler } from "./adapter.mjs";
 import { authorizeBrowser, macBrowserInteraction } from "./browser-login";
@@ -38,12 +40,46 @@ if (import.meta.main) {
   const token = app || managed ? randomBytes(32).toString("hex") : process.env.DEGENVIEW_BRIDGE_TOKEN;
   if (!token || token.length < 32) throw new Error("A local bridge token is required.");
   const login = process.env.DEGENVIEW_TV_LOGIN ?? "anonymous";
-  if (login !== "anonymous" && login !== "browser") throw new Error("Invalid TradingView login mode.");
-  const session = login === "browser" ? await authorizeBrowser(macBrowserInteraction) : undefined;
+  if (!["anonymous","browser","saved","enroll"].includes(login)) throw new Error("Invalid TradingView login mode.");
+  if (["saved","enroll"].includes(login) && (!managed || process.stdout.isTTY || process.stdin.isTTY)) {
+    throw new Error("Private managed pipes required.");
+  }
+  let session: Session | undefined;
+  const earlyRetire = () => process.exit(0);
+  if (managed) {
+    // Start monitoring the parent before any network activity or dialog.
+    const retire = earlyRetire;
+    process.stdin.once("end", retire);
+    process.stdin.once("error", retire);
+  }
+  if (login === "enroll") {
+    process.stdin.resume();
+    session = await authorizeBrowser((url, instructions) => macBrowserInteraction(url, instructions, true));
+    console.log(JSON.stringify({session}));
+    // Let stdout flush and exit normally; the parent closes stdin after reading.
+    await new Promise<void>(() => {});
+    process.exit(0);
+  }
+  if (login === "saved") {
+    const line = await new Promise<string>((resolve,reject) => {
+      const reader = createInterface({input:process.stdin, terminal:false});
+      reader.once("line", value => { reader.close(); resolve(value); });
+      reader.once("error", reject);
+    });
+    if (line.length > 32768 || !(session = parseSession(line))) throw new Error("Saved session invalid.");
+    // Validate with the original client's access checks; never fall back to anonymous.
+    const probe = await Effect.runPromise(makeClient({credential:()=>Effect.succeed(session)}));
+    try { await Effect.runPromise(probe.access()); }
+    catch { throw new Error("Saved TradingView session rejected. Reconnect in Settings."); }
+  } else if (login === "browser") {
+    session = await authorizeBrowser(macBrowserInteraction);
+  }
   const server = await openChartServer(token, session ? {
     credential: () => Effect.succeed(session),
   } : {});
   if (managed) {
+    process.stdin.removeListener("end", earlyRetire);
+    process.stdin.removeListener("error", earlyRetire);
     // Only the private inherited stdout pipe carries the ephemeral loopback bearer.
     console.log(JSON.stringify({version: 1, port: server.port, token}));
     const retire = () => { server.stop(); process.exit(0); };

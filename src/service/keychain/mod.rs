@@ -11,3 +11,4 @@ pub mod snapshot_secrets;
 pub mod webhook_secrets;
 pub mod windows_credentials;
 pub mod oanda;
+pub mod openchart;

@@ -13,3 +13,5 @@ Offline authorization wrapper check: `bash tools/data-bridge/run-openchart.sh ..
 The Rust client reconnects on failure. REST reconciles every 30 seconds while actual candle changes arrive frequently, otherwise every 5 seconds. The OANDA provider is unchanged. The live smoke uses injected upstream sockets only.
 
 Native macOS Settings → TradingView can enable on-demand anonymous access with the pinned local checkout and installed Bun. Restart after changing the setting. The app manages the bridge through private pipes, and the child stops on stdin EOF. Existing terminal launchers still override this preference. No TradingView account credential is persisted by this feature.
+
+Native account enrollment uses the original browser method and a dedicated private helper pipe. The resulting session is stored in the native secure credential backend, and passed to the managed helper over stdin on subsequent launches. The settings file contains only checkout and account-mode preference. Restart after account changes. Anonymous mode remains available explicitly; an invalid saved session does not silently fall back.

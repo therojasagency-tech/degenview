@@ -31,9 +31,9 @@ export async function authorizeBrowser(
   }
 }
 
-export async function macBrowserInteraction(url: string, instructions: string): Promise<string> {
+export async function macBrowserInteraction(url: string, instructions: string, quiet = false): Promise<string> {
   if (process.platform !== "darwin") throw new Error("This launcher requires macOS.");
-  console.log(instructions);
+  if (!quiet) console.log(instructions);
   const browser = Bun.spawn(["/usr/bin/open", url], { stdout: "ignore", stderr: "ignore" });
   if (await browser.exited !== 0) throw new Error("Could not open browser");
   const dialog = Bun.spawn(["/usr/bin/osascript", "-e",

@@ -1,8 +1,8 @@
 //! On-demand local bridge supervisor for the desktop application. No provider credentials on disk.
-use crate::service::ProviderError;
+use crate::service::{ProviderError, keychain::openchart as credentials};
 use serde::{Deserialize, Serialize};
 use std::{
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::{Mutex, OnceLock, mpsc},
@@ -12,6 +12,8 @@ use std::{
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub checkout: PathBuf,
+    #[serde(default)]
+    pub authenticated: bool,
 }
 fn settings_path() -> Option<PathBuf> {
     Some(crate::paths::data_dir()?.join("openchart-local-v1.json"))
@@ -22,13 +24,13 @@ pub fn saved_settings() -> Option<Settings> {
 pub fn default_checkout() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join("Desktop/openchart")
 }
-pub fn save_settings(checkout: PathBuf) -> Result<(), String> {
+pub fn save_settings(checkout: PathBuf, authenticated: bool) -> Result<(), String> {
     if !checkout.is_absolute() || !checkout.join("node_modules").is_dir() || !checkout.join("server/data/providers/tradingview/client.ts").is_file() {
         return Err("Selecciona el checkout de OpenChart con sus dependencias instaladas.".into());
     }
     let path = settings_path().ok_or("No se encontró el directorio de datos.")?;
     std::fs::create_dir_all(path.parent().ok_or("Invalid settings directory")?).map_err(|e| e.to_string())?;
-    let bytes = serde_json::to_vec(&Settings { checkout }).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(&Settings { checkout, authenticated }).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
@@ -78,21 +80,33 @@ struct State {
 static STATE: Mutex<State> = Mutex::new(State { running: None, failed: None });
 static SETTINGS: OnceLock<Option<Settings>> = OnceLock::new();
 
-fn start(settings: &Settings) -> Result<Running, ProviderError> {
+fn helper(settings: &Settings, mode: &str) -> Result<Child, ProviderError> {
     let error = || ProviderError::other("OpenChart could not start. Check its checkout and Bun installation in Settings.");
     let exe = std::env::current_exe().map_err(|_| error())?;
     let script = exe.parent().and_then(|p| p.parent()).ok_or_else(error)?
         .join("Resources/data-bridge/run-openchart.sh");
     let bun = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(error)?.join(".bun/bin");
     let path = format!("{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", bun.display());
-    let mut child = Command::new("/bin/bash")
+    Command::new("/bin/bash")
         .arg(script).arg(&settings.checkout).arg("--managed")
         .env_clear().env("PATH", path)
         .env("HOME", std::env::var_os("HOME").ok_or_else(error)?)
         .env("DEGENVIEW_TV_AUTHORIZED", "1")
-        .env("DEGENVIEW_TV_LOGIN", "anonymous")
+        .env("DEGENVIEW_TV_LOGIN", mode)
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
-        .spawn().map_err(|_| error())?;
+        .spawn().map_err(|_| error())
+}
+
+fn start(settings: &Settings) -> Result<Running, ProviderError> {
+    let error = || ProviderError::other("OpenChart could not start. Check its checkout, Bun and saved TradingView session in Settings.");
+    let session = if settings.authenticated {
+        Some(credentials::read().ok_or_else(|| ProviderError::other("TradingView saved session unavailable. Reconnect in Settings."))?)
+    } else { None };
+    let mut child = helper(settings, if session.is_some() { "saved" } else { "anonymous" })?;
+    if let Some(session) = session {
+        let written = child.stdin.as_mut().is_some_and(|stdin| writeln!(stdin, "{session}").is_ok() && stdin.flush().is_ok());
+        if !written { child.stdin.take(); let _ = child.kill(); let _ = child.wait(); return Err(error()); }
+    }
     let stdout = child.stdout.take().ok_or_else(error)?;
     let (sender, receiver) = mpsc::sync_channel(1);
     std::thread::spawn(move || {
@@ -112,6 +126,49 @@ fn start(settings: &Settings) -> Result<Running, ProviderError> {
             Err(error())
         }
     }
+}
+
+
+/// Browser login is a separate short-lived helper so a failed or cancelled attempt cannot
+/// replace the session currently in use. Its only stdout is the private session envelope.
+pub fn connect_account(checkout: PathBuf) -> Result<(), String> {
+    if !checkout.is_absolute() || !checkout.join("node_modules").is_dir() || !checkout.join("server/data/providers/tradingview/client.ts").is_file() {
+        return Err("Selecciona el checkout de OpenChart con sus dependencias instaladas.".into());
+    }
+    let settings = Settings { checkout, authenticated: true };
+    let mut child = helper(&settings, "enroll").map_err(|e| e.to_string())?;
+    let stdout = child.stdout.take().ok_or("No se pudo abrir el canal privado.")?;
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        let result = reader.read_line(&mut line).ok().filter(|n| *n > 0 && *n < 32768).map(|_| line);
+        let _ = sender.send(result);
+    });
+    let line = receiver.recv_timeout(Duration::from_secs(370)).ok().flatten();
+    child.stdin.take();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if matches!(child.try_wait(), Ok(Some(_))) { break; }
+        if Instant::now() >= deadline { let _ = child.kill(); let _ = child.wait(); break; }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    #[derive(Deserialize)]
+    struct Enrollment { session: serde_json::Value }
+    let enrollment: Enrollment = serde_json::from_str(&line.ok_or("Inicio de sesión cancelado o no disponible.")?)
+        .map_err(|_| "No se pudo validar la sesión de TradingView.")?;
+    if !enrollment.session.get("sessionid").and_then(|v| v.as_str()).is_some_and(|s| !s.is_empty()) {
+        return Err("TradingView no devolvió una sesión válida.".into());
+    }
+    let session = serde_json::to_string(&enrollment.session).map_err(|_| "No se pudo preparar la sesión.")?;
+    credentials::save(&session)?;
+    save_settings(settings.checkout, true)
+}
+
+pub fn disconnect_account(checkout: PathBuf) -> Result<(), String> {
+    credentials::remove()?;
+    // Return to anonymous only after the user explicitly presses Disconnect.
+    save_settings(checkout, false)
 }
 
 /// External launchers retain priority. The internal helper starts on the first market request,
