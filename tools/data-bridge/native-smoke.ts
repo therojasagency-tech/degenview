@@ -63,6 +63,19 @@ try {
   assert.equal(sockets.length, 1);
   assert.equal(sockets[0].terminated, true);
   assert.equal((await fetch(new URL("/v1/health", server.url))).status, 401);
+  const rustProbe = process.env.DEGENVIEW_BRIDGE_FIXTURE_CLIENT;
+  if (rustProbe) {
+    const child = Bun.spawn([rustProbe], {
+      env: {
+        ...process.env,
+        DEGENVIEW_BRIDGE_FIXTURE_PORT: String(server.port),
+        DEGENVIEW_BRIDGE_FIXTURE_TOKEN: token,
+      },
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    assert.equal(await child.exited, 0, "Rust bridge probe failed");
+  }
   console.log("Native OpenChart client + local HTTP bridge: offline smoke passed");
 } finally {
   server.stop(true);
