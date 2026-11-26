@@ -27,20 +27,35 @@ impl DegenViewApp {
     }
 
     pub(super) fn open_pine(&mut self, ctx: &egui::Context) {
+        let focused = self.tabs.focused_tab();
+        let target = self.tabs.slots().iter().find_map(|tab| {
+            let content = tab.content.lock().ok()?;
+            if content.id() != focused { return None; }
+            match &*content {
+                TabContent::Chart(workspace) => workspace.focused_pine_target(),
+                _ => None,
+            }
+        });
         if let Some(id) = self
             .tabs
             .find(|content| matches!(content, TabContent::Pine(_)))
         {
+            if let Some(target) = &target {
+                for tab in self.tabs.slots() {
+                    if let Ok(mut content) = tab.content.lock()
+                        && let TabContent::Pine(pine) = &mut *content
+                        && pine.id() == id
+                    { pine.inherit_chart(target); break; }
+                }
+            }
             self.tabs.show(ctx, id);
             return;
         }
 
         let id = self.tabs.allocate_id();
-        let slot = TabSlot::new(TabContent::Pine(Box::new(PineStudio::new(
-            id,
-            self.store.clone(),
-            self.editor_themes.clone(),
-        ))));
+        let mut studio = PineStudio::new(id, self.store.clone(), self.editor_themes.clone());
+        if let Some(target) = &target { studio.inherit_chart(target); }
+        let slot = TabSlot::new(TabContent::Pine(Box::new(studio)));
         self.tabs.register(slot, None);
     }
 

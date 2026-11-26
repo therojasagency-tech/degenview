@@ -188,6 +188,10 @@ pub struct PineStudio {
 }
 
 impl PineStudio {
+    pub(crate) fn inherit_chart(&mut self, target: &crate::workspace::PineChartTarget) {
+        self.preview.inherit_market(&target.instrument, target.timeframe);
+    }
+
     pub fn new(id: u64, shared: SharedStore, themes: EditorThemeHost) -> Self {
         Self {
             themes,

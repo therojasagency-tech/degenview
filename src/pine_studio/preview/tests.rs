@@ -221,3 +221,17 @@ fn percent_uses_a_real_minus() {
     assert_eq!(signed_percent(1.5), "+1.50%");
     assert_eq!(signed_percent(-0.25), "−0.25%");
 }
+
+#[test]
+fn inherits_exact_forex_provider_and_timeframe_without_changing_chart() {
+    let mut preview = state();
+    for (source, ticker, timeframe) in [(DataSource::OpenChart, "FOREXCOM:EURUSD", Timeframe::HOUR_1), (DataSource::Oanda, "EUR_USD", Timeframe::MIN_5)] {
+        let instrument = crate::model::market::instrument::InstrumentId::new(source, ticker);
+        preview.inherit_market(&instrument, timeframe);
+        assert_eq!(preview.market.source, source);
+        assert_eq!(preview.market.ticker, ticker);
+        assert_eq!(preview.timeframe, timeframe);
+        assert!(preview.candles.is_empty());
+        assert!(preview.want_fetch());
+    }
+}

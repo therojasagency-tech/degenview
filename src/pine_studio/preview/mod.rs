@@ -37,7 +37,7 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 
 const CANDLE_LIMIT: u32 = 500;
 
-/// A market the preview can chart: crypto and stock sources only.
+/// A market the preview can chart, including the custom market providers.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PreviewMarket {
     /// The symbol as the chart takes it (a search result's `full_symbol`).
@@ -68,6 +68,8 @@ impl PreviewMarket {
                 | DataSource::CoinGecko
                 | DataSource::DexScreener
                 | DataSource::Alpaca
+                | DataSource::OpenChart
+                | DataSource::Oanda
         )
     }
 

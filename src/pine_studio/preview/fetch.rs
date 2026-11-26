@@ -57,11 +57,14 @@ impl PreviewState {
         }
     }
 
-    pub(super) fn select_market(&mut self, market: PreviewMarket) {
+    pub(in crate::pine_studio) fn select_market(&mut self, market: PreviewMarket) {
         if market != self.market {
             self.set_candles(Vec::new());
             self.show_newest_bars();
             self.market = market.clone();
+            self.inbox = None;
+            self.loading = false;
+            self.last_fetch = None;
             self.fetched_for = None;
             self.error = None;
         }
@@ -72,9 +75,20 @@ impl PreviewState {
         self.save(RECENTS_KEY, &self.recents);
     }
 
+    pub(in crate::pine_studio) fn inherit_market(&mut self, instrument: &crate::model::market::instrument::InstrumentId, timeframe: Timeframe) {
+        if PreviewMarket::is_supported(instrument.source) {
+            self.select_market(PreviewMarket { ticker: instrument.symbol.clone(), source: instrument.source });
+            self.select_timeframe(timeframe);
+        }
+    }
+
     pub(in crate::pine_studio) fn select_timeframe(&mut self, timeframe: Timeframe) {
         if timeframe != self.timeframe {
             self.timeframe = timeframe;
+            self.inbox = None;
+            self.loading = false;
+            self.last_fetch = None;
+            self.error = None;
             self.set_candles(Vec::new());
             self.show_newest_bars();
             self.fetched_for = None;

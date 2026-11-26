@@ -39,12 +39,25 @@ const CRYPTO_SOURCES: [DataSource; 9] = [
 enum AssetType {
     Crypto,
     Stock,
+    Forex,
+    TradingView,
+}
+
+fn asset_for(source: DataSource) -> AssetType {
+    match source {
+        DataSource::Alpaca => AssetType::Stock,
+        DataSource::Oanda => AssetType::Forex,
+        DataSource::OpenChart => AssetType::TradingView,
+        _ => AssetType::Crypto,
+    }
 }
 
 pub(super) struct Picker {
     asset: AssetType,
     crypto_text: String,
     stock_text: String,
+    forex_text: String,
+    tradingview_text: String,
     last_edit: Option<Instant>,
     results: Vec<SearchResult>,
     /// The search under way, one job per provider; a newer query replaces it.
@@ -57,13 +70,11 @@ pub(super) struct Picker {
 impl Picker {
     fn new(current: &PreviewMarket) -> Self {
         Self {
-            asset: if current.source == DataSource::Alpaca {
-                AssetType::Stock
-            } else {
-                AssetType::Crypto
-            },
+            asset: asset_for(current.source),
             crypto_text: String::new(),
             stock_text: String::new(),
+            forex_text: String::new(),
+            tradingview_text: String::new(),
             last_edit: None,
             results: Vec::new(),
             search: None,
@@ -76,6 +87,8 @@ impl Picker {
         match self.asset {
             AssetType::Crypto => &mut self.crypto_text,
             AssetType::Stock => &mut self.stock_text,
+            AssetType::Forex => &mut self.forex_text,
+            AssetType::TradingView => &mut self.tradingview_text,
         }
     }
 }
@@ -160,6 +173,8 @@ fn picker_ui(ui: &mut Ui, preview: &mut PreviewState) -> Option<PreviewMarket> {
             icon: Icon::BuildingColumns,
             count: 0,
         },
+        kit::TabItem { value: AssetType::Forex, title: "Forex", icon: Icon::Globe, count: 0 },
+        kit::TabItem { value: AssetType::TradingView, title: "TradingView", icon: Icon::Globe, count: 0 },
     ];
     let before = picker.asset;
     kit::tab_bar(
@@ -170,6 +185,7 @@ fn picker_ui(ui: &mut Ui, preview: &mut PreviewState) -> Option<PreviewMarket> {
     );
     if picker.asset != before {
         picker.results.clear();
+        picker.search = None;
         picker.cursor = 0;
         picker.needs_focus = true;
         picker.last_edit = Some(Instant::now());
@@ -178,7 +194,7 @@ fn picker_ui(ui: &mut Ui, preview: &mut PreviewState) -> Option<PreviewMarket> {
     let recents: Vec<PreviewMarket> = preview
         .recents
         .iter()
-        .filter(|m| (m.source == DataSource::Alpaca) == (picker.asset == AssetType::Stock))
+        .filter(|m| asset_for(m.source) == picker.asset)
         .cloned()
         .collect();
     let query_empty = picker.text().trim().is_empty();
@@ -210,6 +226,8 @@ fn picker_ui(ui: &mut Ui, preview: &mut PreviewState) -> Option<PreviewMarket> {
     let placeholder = match picker.asset {
         AssetType::Crypto => tr!("Search coins and tokens, e.g. BTC, ETH, PEPE"),
         AssetType::Stock => tr!("Search US stocks and ETFs, e.g. AAPL, Tesla"),
+        AssetType::Forex => "OANDA: EURUSD, GBPUSD, USDJPY",
+        AssetType::TradingView => "TradingView: EURUSD, DXY, AAPL, COT",
     };
     let field_id = Id::new("script-preview-search");
     let searching = picker.search.is_some();
@@ -261,6 +279,8 @@ fn picker_ui(ui: &mut Ui, preview: &mut PreviewState) -> Option<PreviewMarket> {
             });
         });
     if text_changed {
+        picker.search = None;
+        picker.results.clear();
         picker.last_edit = Some(Instant::now());
         picker.cursor = 0;
     }
@@ -511,6 +531,8 @@ fn drive_search(picker: &mut Picker, ctx: &egui::Context) {
     let sources: Vec<DataSource> = match picker.asset {
         AssetType::Crypto => CRYPTO_SOURCES.to_vec(),
         AssetType::Stock => vec![DataSource::Alpaca],
+        AssetType::Forex => vec![DataSource::Oanda],
+        AssetType::TradingView => vec![DataSource::OpenChart],
     };
     let searches = sources.into_iter().map(|source| {
         let query = query.clone();
