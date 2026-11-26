@@ -300,7 +300,7 @@ pub fn symbol_info(symbol_key: &str) -> SymbolInfo {
         currency: "USD".to_owned(),
         kind: "crypto".to_owned(),
         base_currency: None,
-        grid: source.map_or(Grid::Utc, |source| source.grid()),
+        grid: source.map_or(Grid::Utc, |source| Grid::for_market(source, ticker)),
         ..SymbolInfo::default()
     }
 }

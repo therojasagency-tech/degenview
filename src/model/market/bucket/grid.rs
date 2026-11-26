@@ -10,7 +10,7 @@ use super::{
     next_bucket_start_ms as utc_next_bucket_start_ms,
 };
 use crate::model::market::session;
-use crate::model::{Kline, Timeframe};
+use crate::model::{DataSource, Kline, Timeframe};
 
 /// How many times more base candles than the session holds a request asks for, see
 /// [`Grid::fetch_slack`].
@@ -25,9 +25,33 @@ pub enum Grid {
     /// The regular US equity session, [`session`]: intraday buckets anchor at its open and end at
     /// its close, and only candles inside it exist.
     UsEquities,
+    /// FX trading date rolls at 17:00 America/New_York, not at display midnight.
+    ForexNy17,
 }
 
 impl Grid {
+    /// Only known FX session conventions; never assign every market on TradingView one grid.
+    pub fn for_market(source: DataSource, symbol: &str) -> Self {
+        let pair = match source {
+            DataSource::Oanda => symbol.replace('_', ""),
+            DataSource::OpenChart => match symbol.split_once(':') {
+                Some((venue, ticker)) if venue.eq_ignore_ascii_case("FOREXCOM") => ticker.to_owned(),
+                _ => return source.grid(),
+            },
+            _ => return source.grid(),
+        }.to_ascii_uppercase();
+        const CURRENCIES: &[&str] = &["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "NOK", "SEK", "DKK", "SGD", "HKD", "PLN", "MXN", "ZAR", "TRY", "CNH", "CZK", "HUF"];
+        if pair.len() == 6 && pair.is_ascii() && CURRENCIES.contains(&&pair[..3]) && CURRENCIES.contains(&&pair[3..]) {
+            Self::ForexNy17
+        } else { source.grid() }
+    }
+
+    /// A trading date is the New York calendar date of the session's close.
+    fn forex_date(t_ms: i64) -> i64 {
+        let day = session::local_day(t_ms);
+        day + i64::from(t_ms >= session::forex_boundary_ms(day))
+    }
+
     /// Whether `timeframe` is cut on the session rather than the UTC day on this grid.
     fn anchors(self, timeframe: Timeframe) -> bool {
         self == Self::UsEquities && timeframe.is_intraday()
@@ -39,6 +63,10 @@ impl Grid {
     /// counted from the session of the New York day that holds `t_ms`. A moment outside the
     /// session lies on that grid too (no candle does: see [`Grid::is_traded`]).
     pub fn bucket_start_ms(self, timeframe: Timeframe, t_ms: i64) -> i64 {
+        if self == Self::ForexNy17 && !timeframe.is_intraday() {
+            let label = utc_bucket_start_ms(timeframe, Self::forex_date(t_ms) * DAY_MS);
+            return session::forex_boundary_ms(label.div_euclid(DAY_MS) - 1);
+        }
         if !self.anchors(timeframe) {
             return utc_bucket_start_ms(timeframe, t_ms);
         }
@@ -50,6 +78,10 @@ impl Grid {
     /// Open time of the bucket after the one that contains `t_ms`; on the session grid the last
     /// bucket of a session ends at the close, not a length after it opens.
     pub fn next_bucket_start_ms(self, timeframe: Timeframe, t_ms: i64) -> i64 {
+        if self == Self::ForexNy17 && !timeframe.is_intraday() {
+            let label = utc_next_bucket_start_ms(timeframe, Self::forex_date(t_ms) * DAY_MS);
+            return session::forex_boundary_ms(label.div_euclid(DAY_MS) - 1);
+        }
         if !self.anchors(timeframe) {
             return utc_next_bucket_start_ms(timeframe, t_ms);
         }
@@ -63,6 +95,12 @@ impl Grid {
     /// that a stock's day, week or month ends at the close of its last weekday.
     pub fn session_end_ms(self, timeframe: Timeframe, start_ms: i64) -> i64 {
         let next = self.next_bucket_start_ms(timeframe, start_ms);
+        if self == Self::ForexNy17 && !timeframe.is_intraday() {
+            let mut day = session::local_day(next);
+            while !session::is_weekday(day) { day -= 1; }
+            let end = session::forex_boundary_ms(day);
+            return if end > start_ms { end } else { next };
+        }
         if self != Self::UsEquities || timeframe.is_intraday() {
             return next;
         }
@@ -162,5 +200,29 @@ impl Grid {
             candles.retain(|candle| session::is_open(candle.open_time));
         }
         candles
+    }
+}
+
+#[cfg(test)]
+mod forex_tests {
+    use super::*;
+    use crate::format::days_from_civil;
+    fn ms(y:i64,m:i64,d:i64,h:i64)->i64 { days_from_civil(y,m,d)*DAY_MS+h*3_600_000 }
+    #[test]
+    fn forex_boundary_tracks_us_dst_and_not_utc_midnight() {
+        let grid = Grid::ForexNy17;
+        for (m,d,h) in [(11,25,22),(7,22,21)] {
+            let start = ms(2026,m,d,h);
+            assert_ne!(grid.bucket_start_ms(Timeframe::DAY_1,start-1),start);
+            assert_eq!(grid.bucket_start_ms(Timeframe::DAY_1,start),start);
+            assert_eq!(grid.bucket_start_ms(Timeframe::DAY_1,start+4*3_600_000),start);
+        }
+        let monday = ms(2026,11,23,0);
+        assert_eq!(grid.bucket_start_ms(Timeframe::WEEK_1,monday),ms(2026,11,22,22));
+        assert_eq!(grid.bucket_start_ms(Timeframe::MONTH_1,ms(2026,12,1,0)),ms(2026,11,30,22));
+        assert_eq!(Grid::for_market(DataSource::OpenChart,"FOREXCOM:EURUSD"),grid);
+        assert_eq!(Grid::for_market(DataSource::Oanda,"EUR_USD"),grid);
+        assert_eq!(Grid::for_market(DataSource::OpenChart,"BINANCE:BTCUSDT"),Grid::Utc);
+        assert_eq!(Grid::for_market(DataSource::OpenChart,"FOREXCOM:XAUUSD"),Grid::Utc);
     }
 }

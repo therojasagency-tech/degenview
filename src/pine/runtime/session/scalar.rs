@@ -142,11 +142,17 @@ impl Session {
                 Ok(Some(match seconds {
                     Some(seconds) => {
                         let key = self.site_key(site, context);
+                        let grid = self.symbol.grid;
                         let state = self.working.ta_states.entry(key).or_default();
                         let open_time = context.bar.open_time;
                         RuntimeValue::Bool(ta::previous_bar_time(open_time, state).is_some_and(
                             |previous| {
-                                crate::pine::time::timeframe_changed(previous, open_time, seconds)
+                                if grid == crate::model::market::bucket::Grid::ForexNy17 {
+                                    crate::pine::time::bucket::start(grid, previous, seconds)
+                                        != crate::pine::time::bucket::start(grid, open_time, seconds)
+                                } else {
+                                    crate::pine::time::timeframe_changed(previous, open_time, seconds)
+                                }
                             },
                         ))
                     }

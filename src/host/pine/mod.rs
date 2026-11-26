@@ -106,7 +106,18 @@ impl KlineSecurityDataProvider {
             let covering = (chart.end_ms - chart.start_ms) / (key.interval as i64 * 1_000).max(1);
             (covering + 300).clamp(500, 1_000) as u32
         });
-        let candles = crate::service::fetch_klines(source, &symbol, timeframe, limit).ok()?;
+        let mut candles = crate::service::fetch_klines(source, &symbol, timeframe, limit).ok()?;
+        // TV higher-timeframe stamps may label the trading date at UTC midnight.
+        // Align the native OHLC to the known FX session; never re-create its price from H1.
+        let grid = Grid::for_market(source, &symbol);
+        if grid == Grid::ForexNy17 && !timeframe.is_intraday() {
+            for candle in &mut candles {
+                candle.open_time = grid.bucket_start_ms(timeframe, candle.open_time);
+                candle.close_time = grid.session_end_ms(timeframe, candle.open_time) - 1;
+            }
+            candles.sort_by_key(|bar| bar.open_time);
+            candles.dedup_by_key(|bar| bar.open_time);
+        }
         Some(construct(modifier, candles))
     }
 }
@@ -114,7 +125,7 @@ impl KlineSecurityDataProvider {
 impl SecurityDataProvider for KlineSecurityDataProvider {
     fn grid(&self, symbol: &str) -> Grid {
         let (plain, _) = ticker::split(symbol);
-        resolve_symbol(plain).map_or(Grid::Utc, |(source, _)| source.grid())
+        resolve_symbol(plain).map_or(Grid::Utc, |(source, symbol)| Grid::for_market(source, &symbol))
     }
 
     fn candles(&self, key: &SecurityKey) -> Option<Vec<Kline>> {
@@ -208,6 +219,8 @@ fn source_for_slug(slug: &str) -> Option<DataSource> {
         "POLYMARKET" => Some(DataSource::Polymarket),
         "KALSHI" => Some(DataSource::Kalshi),
         "CMC" => Some(DataSource::CoinMarketCap),
+        "OPENCHART" => Some(DataSource::OpenChart),
+        "OANDA" => Some(DataSource::Oanda),
         _ => None,
     }
 }
@@ -478,6 +491,8 @@ mod tests {
             resolve_symbol("COINBASE:BTC-USD"),
             Some((DataSource::Coinbase, "BTC-USD".to_owned()))
         );
+        assert_eq!(resolve_symbol("OPENCHART:FOREXCOM:EURUSD"), Some((DataSource::OpenChart,"FOREXCOM:EURUSD".to_owned())));
+        assert_eq!(resolve_symbol("OANDA:EUR_USD"), Some((DataSource::Oanda,"EUR_USD".to_owned())));
         assert_eq!(resolve_symbol("NOPE:ETHUSDT"), None);
     }
 }

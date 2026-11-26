@@ -58,6 +58,9 @@ pub fn close_ms(day: i64) -> i64 {
     local_instant(day, CLOSE_MS)
 }
 
+/// The FX rollover at 17:00 New York, with US daylight saving time.
+pub fn forex_boundary_ms(day: i64) -> i64 { local_instant(day, 17 * HOUR_MS) }
+
 /// Whether the regular session is open at `t_ms`.
 pub fn is_open(t_ms: i64) -> bool {
     let day = local_day(t_ms);

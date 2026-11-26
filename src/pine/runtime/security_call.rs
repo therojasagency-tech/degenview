@@ -591,7 +591,13 @@ impl Session {
                 return Err(error);
             }
         };
-        let foreign = if !is_chart_symbol {
+        let grid = self.series_grid(&symbol_name);
+        // For a known FX session, use the provider's actual higher-timeframe D/W/M series,
+        // even on the same symbol. A partial chart window must not invent its opening price.
+        let native_fx = is_chart_symbol && grid == Grid::ForexNy17
+            && interval > self.bar_seconds
+            && [86_400.0, 604_800.0, 2_592_000.0].contains(&interval);
+        let foreign = if !is_chart_symbol || native_fx {
             let key = SecurityKey {
                 symbol: symbol_name.clone(),
                 interval,
@@ -609,7 +615,6 @@ impl Session {
         } else {
             None
         };
-        let grid = self.series_grid(&symbol_name);
         Ok(Some(SecurityRequest {
             symbol: if is_chart_symbol {
                 String::new()
