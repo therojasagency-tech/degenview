@@ -6,30 +6,16 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { parseSession, type Session } from "../server/data/providers/tradingview/credential";
-import { makeClient, type ClientOptions } from "../server/data/providers/tradingview/client";
-import { createAdapter, createHandler } from "./adapter.mjs";
+import { makeClient } from "../server/data/providers/tradingview/client";
 import { authorizeBrowser, macBrowserInteraction } from "./browser-login";
-import { startBridgeServer } from "./live-server";
 
-async function openChartRuntime(token: string, options: ClientOptions = {}) {
-  const client = await Effect.runPromise(makeClient(options));
-  const handler = createHandler(createAdapter(client, {
-    runPromise: Effect.runPromise,
-    scoped: Effect.scoped,
-  }), token);
-  return {client,handler};
-}
+import { openChartServer } from "./openchart-runtime";
+import { runNativeSmoke } from "./native-smoke";
+export { openChartHandler, openChartServer } from "./openchart-runtime";
 
-export async function openChartHandler(token: string, options: ClientOptions = {}) {
-  return (await openChartRuntime(token, options)).handler;
-}
-
-export async function openChartServer(token: string, options: ClientOptions = {}) {
-  const {client,handler} = await openChartRuntime(token, options);
-  return startBridgeServer(client, token, handler);
-}
-
-if (import.meta.main) {
+if (import.meta.main && process.argv.includes("--self-test")) {
+  await runNativeSmoke();
+} else if (import.meta.main) {
   if (process.env.DEGENVIEW_TV_AUTHORIZED !== "1") {
     throw new Error("The data provider requires permission for programmatic use.");
   }

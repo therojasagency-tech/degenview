@@ -38,13 +38,20 @@ pub fn body(ui: &mut egui::Ui, form: &mut OpenChartForm) {
     }
     ui.label(if form.authenticated { "Modo configurado: cuenta personal" } else { "Modo configurado: anónimo" });
     ui.label("La sesión personal se guarda en el llavero; no se solicita tu contraseña.");
-    ui.label("Conserva el checkout de OpenChart y Bun instalados.");
+    let embedded = manager::embedded_bridge().is_some();
+    if embedded {
+        ui.label("Motor OpenChart integrado. No necesita Bun ni una carpeta externa.");
+    } else {
+        ui.label("Modo de desarrollo: conserva el checkout de OpenChart y Bun instalados.");
+    }
     ui.add_space(12.0);
     ui.add_enabled_ui(form.pending.is_none(), |ui| {
-        ui.label("Ruta del checkout de OpenChart");
-        ui.add(egui::TextEdit::singleline(&mut form.checkout).desired_width(340.0));
+        if !embedded {
+            ui.label("Ruta del checkout de OpenChart");
+            ui.add(egui::TextEdit::singleline(&mut form.checkout).desired_width(340.0));
+        }
         ui.checkbox(&mut form.authorized, "Dispongo de autorización para el acceso programático a estos datos.");
-        let enabled = form.authorized && !form.checkout.trim().is_empty();
+        let enabled = form.authorized && (embedded || !form.checkout.trim().is_empty());
         if ui.add_enabled(enabled, egui::Button::new("Activar modo anónimo")).clicked() {
             form.status = Some(match manager::save_settings(PathBuf::from(form.checkout.trim()), false) {
                 Ok(()) => { form.authenticated = false; ("Modo anónimo guardado. Reinicia DegenView.".into(), false) },

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import WebSocket from "ws";
 import { encodeFrame, parseFrames } from "../server/data/providers/tradingview/protocol";
-import { openChartServer } from "./openchart-entry";
+import { openChartServer } from "./openchart-runtime";
 
 const time = Date.UTC(2026, 0, 5, 14, 30);
 class FixtureSocket extends EventEmitter {
@@ -29,6 +29,7 @@ class FixtureSocket extends EventEmitter {
   terminate() { this.terminated = true; }
 }
 
+export async function runNativeSmoke() {
 const token = "offline-fixture".repeat(3);
 const sockets: FixtureSocket[] = [];
 const server = await openChartServer(token, {
@@ -106,3 +107,7 @@ try {
 } finally {
   server.stop();
 }
+
+}
+
+if (import.meta.main) await runNativeSmoke();

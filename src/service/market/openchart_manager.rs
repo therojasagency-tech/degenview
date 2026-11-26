@@ -24,8 +24,19 @@ pub fn saved_settings() -> Option<Settings> {
 pub fn default_checkout() -> PathBuf {
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join("Desktop/openchart")
 }
+pub fn embedded_bridge() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let helper = exe.parent()?.join("OpenChartBridge");
+    helper.is_file().then_some(helper)
+}
+
+fn valid_checkout(checkout: &std::path::Path) -> bool {
+    checkout.is_absolute() && checkout.join("node_modules").is_dir()
+        && checkout.join("server/data/providers/tradingview/client.ts").is_file()
+}
+
 pub fn save_settings(checkout: PathBuf, authenticated: bool) -> Result<(), String> {
-    if !checkout.is_absolute() || !checkout.join("node_modules").is_dir() || !checkout.join("server/data/providers/tradingview/client.ts").is_file() {
+    if embedded_bridge().is_none() && !valid_checkout(&checkout) {
         return Err("Selecciona el checkout de OpenChart con sus dependencias instaladas.".into());
     }
     let path = settings_path().ok_or("No se encontró el directorio de datos.")?;
@@ -81,15 +92,24 @@ static STATE: Mutex<State> = Mutex::new(State { running: None, failed: None });
 static SETTINGS: OnceLock<Option<Settings>> = OnceLock::new();
 
 fn helper(settings: &Settings, mode: &str) -> Result<Child, ProviderError> {
-    let error = || ProviderError::other("OpenChart could not start. Check its checkout and Bun installation in Settings.");
+    let error = || ProviderError::other("OpenChart could not start. Check the embedded bridge or developer checkout in Settings.");
     let exe = std::env::current_exe().map_err(|_| error())?;
     let script = exe.parent().and_then(|p| p.parent()).ok_or_else(error)?
         .join("Resources/data-bridge/run-openchart.sh");
     let bun = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(error)?.join(".bun/bin");
     let path = format!("{}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", bun.display());
-    Command::new("/bin/bash")
-        .arg(script).arg(&settings.checkout).arg("--managed")
-        .env_clear().env("PATH", path)
+    let mut command = if let Some(binary) = embedded_bridge() {
+        Command::new(binary)
+    } else {
+        let mut command = Command::new("/bin/bash");
+        command.arg(script).arg(&settings.checkout).arg("--managed");
+        command
+    };
+    let embedded = embedded_bridge().is_some();
+    command
+        .env_clear()
+        .env("PATH", if embedded { "/usr/bin:/bin".to_owned() } else { path })
+        .env("DEGENVIEW_BRIDGE_MANAGED", "1")
         .env("HOME", std::env::var_os("HOME").ok_or_else(error)?)
         .env("DEGENVIEW_TV_AUTHORIZED", "1")
         .env("DEGENVIEW_TV_LOGIN", mode)
@@ -98,7 +118,7 @@ fn helper(settings: &Settings, mode: &str) -> Result<Child, ProviderError> {
 }
 
 fn start(settings: &Settings) -> Result<Running, ProviderError> {
-    let error = || ProviderError::other("OpenChart could not start. Check its checkout, Bun and saved TradingView session in Settings.");
+    let error = || ProviderError::other("OpenChart could not start. Check the bridge and saved TradingView session in Settings.");
     let session = if settings.authenticated {
         Some(credentials::read().ok_or_else(|| ProviderError::other("TradingView saved session unavailable. Reconnect in Settings."))?)
     } else { None };
@@ -132,7 +152,7 @@ fn start(settings: &Settings) -> Result<Running, ProviderError> {
 /// Browser login is a separate short-lived helper so a failed or cancelled attempt cannot
 /// replace the session currently in use. Its only stdout is the private session envelope.
 pub fn connect_account(checkout: PathBuf) -> Result<(), String> {
-    if !checkout.is_absolute() || !checkout.join("node_modules").is_dir() || !checkout.join("server/data/providers/tradingview/client.ts").is_file() {
+    if embedded_bridge().is_none() && !valid_checkout(&checkout) {
         return Err("Selecciona el checkout de OpenChart con sus dependencias instaladas.".into());
     }
     let settings = Settings { checkout, authenticated: true };

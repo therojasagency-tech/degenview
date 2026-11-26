@@ -52,6 +52,42 @@ elif [ ! -x target/release/degenview ] || [ ! -x target/release/degenview-alert-
     exit 1
 fi
 
+# Local builds embed the pinned OpenChart client automatically if the sibling checkout is present.
+# CI/upstream builds without that checkout retain the source launcher. Set 1 to require embedding.
+checkout="${DEGENVIEW_OPENCHART_CHECKOUT:-../openchart}"
+embed="${DEGENVIEW_EMBED_OPENCHART:-auto}"
+case "$embed" in
+    auto) if [ -z "$identity" ] && [ -d "$checkout/node_modules" ]; then embed=1; else embed=0; fi ;;
+    0|1) ;;
+    *) echo "DEGENVIEW_EMBED_OPENCHART must be auto, 0 or 1" >&2; exit 2 ;;
+esac
+if [ "$embed" = 1 ]; then
+    # Developer ID / hardened runtime needs a separate signing and licensing audit.
+    if [ -n "$identity" ]; then
+        echo "Embedded OpenChart is currently supported in local unsigned builds only." >&2
+        exit 1
+    fi
+    export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
+    command -v bun >/dev/null || { echo "Bun is required to BUILD the embedded bridge." >&2; exit 1; }
+    checkout=$(cd "$checkout" && pwd)
+    mkdir -p target
+    build_root=$(mktemp -d "$PWD/target/.openchart-build.XXXXXX")
+    trap 'rm -rf "$build_root"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    bridge_bin="$build_root/OpenChartBridge"
+    /bin/bash tools/data-bridge/run-openchart.sh "$checkout" --compile "$bridge_bin"
+    test -x "$bridge_bin"
+    # Require the same native architecture as the Rust app.
+    [ "$(lipo -archs "$bridge_bin")" = "$(lipo -archs target/release/degenview)" ] || {
+        echo "OpenChartBridge architecture does not match DegenView" >&2; exit 1;
+    }
+    mkdir "$build_root/empty"
+    # Test the actual executable without Bun on PATH or access to the source working directory.
+    (cd "$build_root/empty" && /usr/bin/env -i PATH=/usr/bin:/bin HOME="$build_root/empty" "$bridge_bin" --self-test)
+    echo "Embedded OpenChartBridge offline test passed"
+fi
+
 app="target/DegenView.app"
 helper="$app/Contents/Library/LoginItems/DegenViewAlertAgent.app"
 executable="$app/Contents/MacOS/DegenView"
@@ -63,7 +99,14 @@ mkdir -p "$helper/Contents/MacOS" "$helper/Contents/Resources"
 cp target/release/degenview "$executable"
 # Ship the bridge source, not the user checkout, node_modules or secrets.
 mkdir -p "$app/Contents/Resources/data-bridge"
-cp tools/data-bridge/run-openchart.sh tools/data-bridge/adapter.mjs tools/data-bridge/openchart-entry.ts tools/data-bridge/browser-login.ts tools/data-bridge/browser-login-smoke.ts tools/data-bridge/native-smoke.ts tools/data-bridge/live-server.ts "$app/Contents/Resources/data-bridge/"
+cp tools/data-bridge/run-openchart.sh tools/data-bridge/adapter.mjs tools/data-bridge/openchart-entry.ts tools/data-bridge/browser-login.ts tools/data-bridge/browser-login-smoke.ts tools/data-bridge/native-smoke.ts tools/data-bridge/live-server.ts tools/data-bridge/openchart-runtime.ts "$app/Contents/Resources/data-bridge/"
+if [ "$embed" = 1 ]; then
+    cp "$bridge_bin" "$app/Contents/MacOS/OpenChartBridge"
+    chmod 755 "$app/Contents/MacOS/OpenChartBridge"
+    mkdir -p "$app/Contents/Resources/Licenses"
+    cp "$checkout/LICENSE" "$app/Contents/Resources/Licenses/OpenChart-MIT.txt"
+    echo "OpenChartBridge included in $app"
+fi
 cp target/release/degenview-alert-agent "$helper_executable"
 cp assets/brand/DegenView.icns "$app/Contents/Resources/DegenView.icns"
 # The fonts compiled into the app are under the SIL OFL, which wants its text and the copyright
