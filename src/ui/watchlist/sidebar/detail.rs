@@ -3,6 +3,7 @@
 use super::{WatchlistSidebarInput, WatchlistSidebarState};
 
 use crate::i18n::tr;
+use crate::model::DataSource;
 use crate::model::watchlist;
 use crate::model::watchlist::quote::WatchlistQuote;
 use crate::model::watchlist::quote::{Direction, Freshness};
