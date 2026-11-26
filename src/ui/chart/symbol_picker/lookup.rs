@@ -32,8 +32,15 @@ impl Lookup {
             venue: chosen,
             unsupported: None,
         };
-        if scope == Scope::Dashboards || chosen == Some(DataSource::OpenChart) {
+        if scope == Scope::Dashboards {
             return plain;
+        }
+        if chosen == Some(DataSource::OpenChart) {
+            return if let Some(query) = venue::parse(text).filter(|q| q.source == Some(DataSource::OpenChart)) {
+                Self { query: query.symbol, ..plain }
+            } else {
+                plain
+            };
         }
         let Some(VenueQuery {
             prefix,

@@ -93,6 +93,7 @@ pub fn source_id(source: DataSource) -> &'static str {
         DataSource::Polymarket => "polymarket",
         DataSource::Kalshi => "kalshi",
         DataSource::CoinMarketCap => "coinmarketcap",
+        DataSource::OpenChart => "openchart",
     }
 }
 

@@ -211,6 +211,7 @@ impl Chart {
             | DataSource::CoinGecko
             | DataSource::Alpaca => self.source.display_symbol(&self.symbol),
             DataSource::DexScreener => self.source.base_asset(&self.display_title()),
+            DataSource::OpenChart => format!("OPENCHART:{}", self.symbol),
             DataSource::Polymarket | DataSource::Kalshi | DataSource::CoinMarketCap => {
                 String::new()
             }

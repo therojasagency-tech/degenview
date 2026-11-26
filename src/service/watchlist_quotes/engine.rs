@@ -365,11 +365,14 @@ impl Engine {
             return;
         }
         for (key, instrument) in &wanted {
-            if instrument.source == DataSource::CoinMarketCap && !self.known.contains_key(key) {
+            if matches!(instrument.source, DataSource::CoinMarketCap | DataSource::OpenChart)
+                && !self.known.contains_key(key) {
                 self.publish(
                     key,
                     WatchlistQuote::unsupported(Some(
-                        if instrument.symbol.starts_with("portfolio:") {
+                        if instrument.source == DataSource::OpenChart {
+                            tr!("OpenChart watchlist quotes are not available yet")
+                        } else if instrument.symbol.starts_with("portfolio:") {
                             tr!("Portfolio cards have no market quote")
                         } else {
                             tr!("Index charts have no market quote")
@@ -500,7 +503,7 @@ impl Engine {
             return None;
         }
         match instrument.source {
-            DataSource::CoinMarketCap => None,
+            DataSource::CoinMarketCap | DataSource::OpenChart => None,
             source if source.streams_quotes() => {
                 // The socket supplies prices; REST fills a product it has not answered, and
                 // refreshes one it has gone quiet on, so a thin market's price never ages.
@@ -760,7 +763,7 @@ impl Engine {
     }
 }
 
-const ALL_SOURCES: [DataSource; 13] = [
+const ALL_SOURCES: [DataSource; 14] = [
     DataSource::Binance,
     DataSource::Coinbase,
     DataSource::Okx,
@@ -774,6 +777,7 @@ const ALL_SOURCES: [DataSource; 13] = [
     DataSource::Polymarket,
     DataSource::Kalshi,
     DataSource::CoinMarketCap,
+    DataSource::OpenChart,
 ];
 
 /// A stable order for sources, so rounds are deterministic.
@@ -1792,6 +1796,16 @@ mod tests {
         );
         // Not asked again this session.
         assert!(lock(&engine).missing_chains().is_empty());
+    }
+
+    #[test]
+    fn openchart_watchlist_quotes_are_unsupported_not_polled() {
+        let (engine, book, provider) = setup();
+        let market = id(DataSource::OpenChart, "OANDA:EURUSD");
+        lock(&engine).update(1, vec![market.clone()], true, T0);
+        round(&engine, &provider, T0);
+        assert!(provider.calls().is_empty());
+        assert_eq!(book.get(&market).unwrap().freshness, Freshness::Unsupported);
     }
 
     #[test]
