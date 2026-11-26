@@ -9,6 +9,10 @@ const APP_DIR: &str = "es.nico.degenview";
 /// The app's data directory: `~/Library/Application Support` on macOS, `%APPDATA%` on Windows,
 /// `$XDG_DATA_HOME` (or `~/.local/share`) elsewhere.
 pub fn data_dir() -> Option<PathBuf> {
+    // An explicit local test profile keeps synthetic charts out of the normal database.
+    if let Some(dir) = std::env::var_os("DEGENVIEW_DATA_DIR").filter(|value| !value.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
     let env = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
     let base = if cfg!(target_os = "macos") {
         PathBuf::from(env("HOME")?).join("Library/Application Support")
