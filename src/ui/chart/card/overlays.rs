@@ -418,6 +418,7 @@ impl ChartCard {
         view: &View,
         style: &CanvasStyle,
         last_price_tag: Option<TagBand>,
+        crosshair_band: Option<TagBand>,
         pine_tags: Vec<super::scripts::IndicatorTag>,
     ) {
         let half = style.tag_half_height();
@@ -447,7 +448,8 @@ impl ChartCard {
             }
         }
         let placed = if has_pine_tags {
-            super::scripts::place_indicator_tags(axis, half, plot, last_price_tag.as_slice())
+            let avoid: Vec<_> = last_price_tag.into_iter().chain(crosshair_band).collect();
+            super::scripts::place_indicator_tags(axis, half, plot, &avoid)
         } else { spread(axis, half, plot, last_price_tag) };
         for (y, fill, text) in placed {
             let tag = Rect::from_min_max(

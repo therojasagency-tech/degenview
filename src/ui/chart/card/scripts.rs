@@ -483,3 +483,84 @@ pub(super) fn draw_script_pane(
     let pointer = pointer.filter(|p| plot.contains(*p) && layer.has_tooltips())?;
     chart_render::target_at(&layer.hover_targets(painter),pointer).cloned()
 }
+
+
+#[cfg(test)]
+mod indicator_readout_tests {
+    use super::*;
+    use crate::pine::compiler::program::ValueFormat;
+    use crate::pine::outputs::{DISPLAY_ALL, PlotStyle};
+
+    fn sample(values: Vec<Option<f64>>) -> PlotOutput {
+        PlotOutput {
+            id: 7, title: Some("COT".into()),
+            colors: vec![Some(0x26a69aff); values.len()],
+            values, color: 0x26a69aff, line_width: 1,
+            style: PlotStyle::Line, display: DISPLAY_ALL,
+            hist_base: 0.0, offset: 0, force_overlay: false,
+        }
+    }
+
+    #[test]
+    fn historical_readout_uses_shifted_series_and_never_fills_gaps() {
+        let mut plot = sample(vec![Some(12.0), None, Some(95.69), Some(-3.0)]);
+        plot.colors[2] = Some(0xf23645ff);
+        plot.offset = 1;
+        let plot = plot.shifted();
+        assert_eq!(plot_sample(&plot, ReadoutAt::Bar { count_with_tail: 4, index: 0 }), None);
+        assert_eq!(plot_sample(&plot, ReadoutAt::Bar { count_with_tail: 4, index: 1 }).unwrap().0, 12.0);
+        assert_eq!(plot_sample(&plot, ReadoutAt::Bar { count_with_tail: 4, index: 2 }), None);
+        assert_eq!(plot_sample(&plot, ReadoutAt::Latest), Some((95.69, rgba(0xf23645ff))));
+        assert_eq!(plot_sample(&plot, ReadoutAt::Missing), None);
+        let plot = sample(vec![Some(10.0), Some(20.0), Some(30.0), Some(40.0)]);
+        let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 100.0));
+        let at = readout_at(Some(15.0), area, 10.0, 0.0, 2, 1);
+        assert_eq!(plot_sample(&plot, at).unwrap().0, 30.0);
+    }
+
+    #[test]
+    fn cot_precision_and_plot_override_are_independent_of_market() {
+        let mut pine = VisualOutput::default();
+        pine.presentation.number.precision = Some(0);
+        assert_eq!(format_value(&pine, None, 109292.0, PriceFormat::AUTO), "109292");
+        pine.presentation.number.precision = Some(2);
+        assert_eq!(format_value(&pine, None, 95.69, PriceFormat::AUTO), "95.69");
+        assert_eq!(format_value(&pine, None, -0.001, PriceFormat::AUTO), "0.00");
+        pine.presentation.plots.insert(7, ValueFormat { format: Some("format.percent".into()), precision: Some(1) });
+        assert_eq!(format_value(&pine, Some(7), -3.24, PriceFormat::AUTO), "-3.2%");
+        assert_eq!(format_value(&pine, None, -3.24, PriceFormat::AUTO), "-3.24");
+    }
+
+    #[test]
+    fn cursor_level_is_not_the_plot_sample_and_historical_range_ignores_future() {
+        let mut pine = VisualOutput::default();
+        pine.bar_count = 4;
+        pine.plots.push(sample(vec![Some(60.0), Some(95.69), Some(10000.0), Some(20000.0)]));
+        let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 150.0));
+        let geometry = PaneGeometry::new(area, area, &pine, 2, 2).unwrap();
+        assert!(geometry.scale.maximum < 110.0);
+        let cursor_y = geometry.scale.y(80.0);
+        assert!((geometry.scale.price(cursor_y) - 80.0).abs() < 0.001);
+        assert_eq!(plot_sample(&pine.plots[0], ReadoutAt::Bar { count_with_tail: 4, index: 1 }).unwrap().0, 95.69);
+        pine.plots[0].display = DISPLAY_STATUS_LINE;
+        assert!(last_tags(&pine, PriceFormat::AUTO, &geometry.scale, geometry.plot).is_empty());
+        pine.plots[0].display = DISPLAY_PRICE_SCALE;
+        assert_eq!(last_tags(&pine, PriceFormat::AUTO, &geometry.scale, geometry.plot).len(), 1);
+    }
+
+    #[test]
+    fn crowded_labels_avoid_each_other_and_crosshair() {
+        let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(100.0, 150.0));
+        let tags = (0..5).map(|n| (75.0, Color32::RED, n.to_string())).collect();
+        let avoid = TagBand { top: 65.0, bottom: 85.0 };
+        let placed = place_indicator_tags(tags, 8.0, area, &[avoid]);
+        assert_eq!(placed.len(), 5);
+        for (i, (y, _, _)) in placed.iter().enumerate() {
+            assert!(*y >= 8.0 && *y <= 142.0);
+            assert!(*y + 8.0 < avoid.top || *y - 8.0 > avoid.bottom);
+            for (other, _, _) in placed.iter().skip(i + 1) {
+                assert!((*y-*other).abs() >= 16.0);
+            }
+        }
+    }
+}

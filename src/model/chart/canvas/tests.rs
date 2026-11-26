@@ -809,3 +809,17 @@ fn a_scale_with_room_for_two_labels_always_gets_at_least_two() {
     // One label's worth of room stays one.
     assert!(price_ticks(14.0, 86.0, false, 1).len() <= 1);
 }
+
+
+#[test]
+fn indicator_readouts_are_backward_compatible_and_persist_independently() {
+    let mut canvas: ChartCanvas = serde_json::from_str("{}").unwrap();
+    assert!(canvas.indicator_readouts.names && canvas.indicator_readouts.values);
+    assert!(canvas.indicator_readouts.axis_values && canvas.indicator_readouts.crosshair_tags);
+    assert!(!canvas.indicator_readouts.parameters);
+    canvas.indicator_readouts.names = false;
+    canvas.indicator_readouts.axis_values = false;
+    canvas.indicator_readouts.parameters = true;
+    let restored: ChartCanvas = serde_json::from_str(&serde_json::to_string(&canvas).unwrap()).unwrap();
+    assert_eq!(restored.indicator_readouts, canvas.indicator_readouts);
+}

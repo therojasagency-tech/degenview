@@ -160,6 +160,13 @@ fn plot(args: &[Arg], site: usize, state: &mut RuntimeState) -> Result<RuntimeVa
             "trackprice",
             "histbase",
             "offset",
+            "join",
+            "editable",
+            "show_last",
+            "display",
+            "format",
+            "precision",
+            "force_overlay",
         ],
     );
     let color = color_value(b.get("color"), Some(DEFAULT_COLOR)).unwrap_or(0);

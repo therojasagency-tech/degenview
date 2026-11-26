@@ -20,7 +20,7 @@ const SIGNATURES: &[(&str, &str, &str)] = &[
     ),
     (
         "plot",
-        "series, title, color, linewidth, style, trackprice, histbase, offset, join, editable, show_last, display",
+        "series, title, color, linewidth, style, trackprice, histbase, offset, join, editable, show_last, display, format, precision, force_overlay",
         "plot",
     ),
     (

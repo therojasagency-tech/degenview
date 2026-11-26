@@ -2363,3 +2363,44 @@ fn a_failed_refresh_keeps_the_last_candles_and_adds_a_warning() {
     );
     assert!(pointer.rect.is_some());
 }
+
+
+#[test]
+fn indicator_legend_and_axis_value_are_visible_without_hover() {
+    let mut harness = Harness::new(ChartCanvas::default());
+    let id = harness.card.add_pine_instance(None, "Long name",
+        "//@version=6\nindicator(\"Long name\", shorttitle=\"COT Index\", precision=2)\nplot(95.69, color=color.aqua)\nplot(1234567, display=display.none)\n");
+    wait_for_run(&mut harness, id);
+    assert!(harness.card.pine_status(id).unwrap().error.is_none());
+    let (drawn, _) = harness.draw();
+    assert!(drawn.texts.iter().any(|(_,s,_)| s.contains("COT Index") && s.contains("95.69")));
+    assert!(drawn.texts.iter().any(|(pos,s,_)| pos.x > SIZE.x-100.0 && s == "95.69"));
+    assert!(!drawn.texts.iter().any(|(_,s,_)| s.contains("1234567")));
+    harness.card.appearance_mut().canvas.indicator_readouts.names = false;
+    harness.card.appearance_mut().canvas.indicator_readouts.values = false;
+    harness.card.appearance_mut().canvas.indicator_readouts.axis_values = false;
+    let (without, _) = harness.draw();
+    assert!(!without.texts.iter().any(|(_,s,_)| s.contains("COT Index")));
+}
+
+#[test]
+fn pane_pointer_draws_its_horizontal_line_and_shares_the_time_column() {
+    let mut canvas = ChartCanvas::default();
+    canvas.crosshair.color = Some([255, 128, 0, 200]);
+    canvas.crosshair.dash = LineDash::Solid;
+    let mut harness = with_panes(canvas);
+    harness.draw();
+    let (heights, first) = pane_heights(&harness);
+    let probe = harness.card.probe.expect("drawn chart");
+    let at = Pos2::new(probe.plot.center().x, first + heights.panes[0] * 0.5);
+    harness.pointer = Some(at);
+    let (drawn, pointer) = harness.draw();
+    assert!(pointer.hover_time.is_some());
+    assert!(pointer.hover_anchor.is_none());
+    let colour = Color32::from_rgba_unmultiplied(255,128,0,200);
+    let lines: Vec<_> = drawn.segments.iter().filter(|(_,s)| s.color == colour).collect();
+    assert!(lines.iter().filter(|(p,_)| p[0].x == p[1].x).count() >= 3);
+    let horizontal: Vec<_> = lines.iter().filter(|(p,_)| p[0].y == p[1].y).collect();
+    assert_eq!(horizontal.len(), 1);
+    assert!((horizontal[0].0[0].y-at.y).abs() <= 1.5);
+}

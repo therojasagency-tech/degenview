@@ -91,14 +91,13 @@ pub(super) struct Decor<'a> {
 }
 
 /// One script pane, as its overlay hook sees it.
-pub(super) struct PaneSlot<'a> {
+pub(super) struct PaneSlot {
     pub index: usize,
     pub count: usize,
     pub id: u64,
     pub rect: Rect,
     pub collapsed: bool,
     pub maximized: bool,
-    pub name: &'a str,
 }
 
 /// What the live chart adds to a frame, in the places it adds it.
@@ -562,6 +561,12 @@ impl ChartCard {
             view,
             style,
             last_price_tag,
+            shared.filter(|(crosshair,_)| pane_pointer.is_none()
+                && crosshair.owner_id == decor.chart_id && !crosshair.frozen
+                && self.cursor.caps().axis_tags && style.indicator_readouts.crosshair_tags)
+                .map(|(crosshair,_)| scale.y(crosshair.price))
+                .filter(|y| plot.y_range().contains(*y))
+                .map(|y| TagBand { top: y-style.tag_half_height(), bottom: y+style.tag_half_height() }),
             if style.indicator_readouts.axis_values && main_visible {
                 layout.overlay_outputs.iter().flat_map(|(pine,_)| {
                     scripts::last_tags(pine, self.appearance.price_format(), scale, plot)
@@ -643,7 +648,6 @@ impl ChartCard {
                         rect: *pane_rect,
                         collapsed,
                         maximized,
-                        name,
                     },
                 );
             }
