@@ -51,6 +51,11 @@ pub enum Scope {
     All,
     Stocks,
     Crypto,
+    Forex,
+    Futures,
+    Indices,
+    Commodities,
+    Cfds,
     /// Polymarket and Kalshi: events with their choices.
     Predictions,
     /// CoinMarketCap's market-wide indices and the portfolio views. Nothing is searched.
@@ -60,10 +65,15 @@ pub enum Scope {
 }
 
 impl Scope {
-    pub const TABS: [Self; 6] = [
+    pub const TABS: [Self; 11] = [
         Self::All,
         Self::Stocks,
         Self::Crypto,
+        Self::Forex,
+        Self::Futures,
+        Self::Indices,
+        Self::Commodities,
+        Self::Cfds,
         Self::Predictions,
         Self::Dashboards,
         Self::Watchlists,
@@ -74,6 +84,11 @@ impl Scope {
             Self::All => tr!("All"),
             Self::Stocks => tr!("Stocks"),
             Self::Crypto => tr!("Crypto"),
+            Self::Forex => "Forex",
+            Self::Futures => "Futures",
+            Self::Indices => "Indices",
+            Self::Commodities => "Commodities",
+            Self::Cfds => "CFDs",
             Self::Predictions => tr!("Predictions"),
             Self::Dashboards => tr!("Dashboards"),
             Self::Watchlists => tr!("Watchlists"),
@@ -83,10 +98,27 @@ impl Scope {
     pub fn includes(self, source: DataSource) -> bool {
         match self {
             Self::All | Self::Watchlists => PROVIDERS.contains(&source),
-            Self::Stocks => source == DataSource::Alpaca,
-            Self::Crypto => PROVIDERS.contains(&source) && !matches!(source, DataSource::Alpaca | DataSource::OpenChart | DataSource::Oanda),
+            Self::Stocks => matches!(source, DataSource::Alpaca | DataSource::OpenChart),
+            Self::Crypto => PROVIDERS.contains(&source) && !matches!(source, DataSource::Alpaca | DataSource::Oanda),
+            Self::Forex | Self::Commodities | Self::Cfds => matches!(source, DataSource::OpenChart | DataSource::Oanda),
+            Self::Futures | Self::Indices => source == DataSource::OpenChart,
             Self::Predictions => PREDICTION_PROVIDERS.contains(&source),
             Self::Dashboards => source == DataSource::CoinMarketCap,
+        }
+    }
+
+    pub fn matches(self, result: &SearchResult) -> bool {
+        use crate::service::market::kind::{self, Kind};
+        if !self.includes(result.source) { return false; }
+        match self {
+            Self::Stocks => kind::of(result) == Kind::Stock,
+            Self::Crypto => kind::of(result) == Kind::Crypto,
+            Self::Forex => kind::of(result) == Kind::Forex,
+            Self::Futures => kind::of(result) == Kind::Future,
+            Self::Indices => kind::of(result) == Kind::Index,
+            Self::Commodities => kind::of(result) == Kind::Commodity,
+            Self::Cfds => kind::of(result) == Kind::Cfd,
+            _ => true,
         }
     }
 
@@ -131,7 +163,7 @@ impl Scope {
             Self::Predictions => tr!("Search markets (e.g. Bitcoin, Fed, election)"),
             Self::Dashboards => tr!("Filter indices and portfolio views"),
             Self::Watchlists => tr!("Filter your watchlists"),
-            Self::All | Self::Stocks | Self::Crypto => tr!("Search symbol…"),
+            _ => tr!("Search symbol…"),
         }
     }
 }
@@ -161,6 +193,12 @@ pub fn market_kind(source: DataSource) -> &'static str {
 }
 
 /// How a market trades, for the "also trades as" column.
+pub fn result_kind(result: &SearchResult) -> &'static str {
+    if matches!(result.source, DataSource::OpenChart | DataSource::Oanda) {
+        crate::service::market::kind::of(result).label()
+    } else { market_kind(result.source) }
+}
+
 pub fn trading_kind(source: DataSource) -> &'static str {
     match source {
         DataSource::Binance
@@ -293,7 +331,7 @@ impl SymbolSearch {
         for source in &sources {
             let slot = (key.clone(), *source);
             match self.answers.get(&slot) {
-                Some(Ok(results)) => groups.push(results.clone()),
+                Some(Ok(results)) => groups.push(results.iter().filter(|r| scope.matches(r)).cloned().collect()),
                 Some(Err(error)) => errors.push((*source, error.clone())),
                 None => searching = true,
             }
@@ -434,7 +472,7 @@ mod tests {
         assert!(!Scope::Dashboards.searches());
         assert!(Scope::Predictions.searches());
         // Prediction markets and indices never leak into the tabs that list spot markets.
-        for scope in [Scope::All, Scope::Stocks, Scope::Crypto, Scope::Watchlists] {
+        for scope in [Scope::All, Scope::Stocks, Scope::Crypto, Scope::Forex, Scope::Futures, Scope::Indices, Scope::Commodities, Scope::Cfds, Scope::Watchlists] {
             assert!(!scope.includes(DataSource::Polymarket));
             assert!(!scope.includes(DataSource::Kalshi));
             assert!(!scope.includes(DataSource::CoinMarketCap));
@@ -448,11 +486,11 @@ mod tests {
         // A market compared over a chart is a crypto or stock market.
         assert_eq!(
             Scope::tabs(PickMode::Compare),
-            [Scope::All, Scope::Stocks, Scope::Crypto, Scope::Watchlists]
+            [Scope::All, Scope::Stocks, Scope::Crypto, Scope::Forex, Scope::Futures, Scope::Indices, Scope::Commodities, Scope::Cfds, Scope::Watchlists]
         );
         // A watchlist's own markets are already in the sidebar being added to.
         assert!(!Scope::tabs(PickMode::Watchlist).contains(&Scope::Watchlists));
-        assert_eq!(Scope::Crypto.next(PickMode::Compare), Scope::Watchlists);
+        assert_eq!(Scope::Crypto.next(PickMode::Compare), Scope::Forex);
         assert_eq!(Scope::Dashboards.next(PickMode::Watchlist), Scope::All);
     }
 
@@ -470,7 +508,7 @@ mod tests {
 
     #[test]
     fn a_scope_offers_only_its_own_venues() {
-        assert_eq!(Scope::Stocks.venues(), [DataSource::Alpaca]);
+        assert_eq!(Scope::Stocks.venues(), [DataSource::Alpaca, DataSource::OpenChart]);
         assert!(!Scope::Crypto.venues().contains(&DataSource::Alpaca));
         assert_eq!(Scope::All.venues().len(), PROVIDERS.len());
         assert_eq!(Scope::Watchlists.venues().len(), PROVIDERS.len());
@@ -502,6 +540,8 @@ mod tests {
             DataSource::Mexc,
             DataSource::DexScreener,
             DataSource::CoinGecko,
+            DataSource::OpenChart,
+            DataSource::Oanda,
         ] {
             search
                 .answers

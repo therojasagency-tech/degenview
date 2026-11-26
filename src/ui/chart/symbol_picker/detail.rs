@@ -5,7 +5,7 @@
 
 use super::dashboards::{Tile, TilePick};
 use super::list::{related_row, subtitle};
-use super::search::{market_kind, trading_kind};
+use super::search::{trading_kind};
 use super::{Item, predictions};
 use crate::format;
 use crate::i18n::{tr, tr_n};
@@ -467,7 +467,7 @@ fn status_line(ui: &Ui, at: Pos2, result: &SearchResult, quote: Option<&Watchlis
 /// The exchange the market is listed on, with its logo and what it trades there.
 fn venue_line(ui: &Ui, at: Pos2, result: &SearchResult) -> f32 {
     let kind = match trading_kind(result.source) {
-        "" => market_kind(result.source),
+        "" => super::search::result_kind(result),
         kind => kind,
     };
     let text = tr!(

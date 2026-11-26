@@ -93,7 +93,7 @@ pub fn disconnect_account() -> Result<(), ProviderError> {
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Instrument { name: String, display_name: String, display_precision: u8 }
+struct Instrument { name: String, display_name: String, display_precision: u8, #[serde(rename = "type", default)] market_type: String }
 #[derive(Deserialize)]
 struct Instruments { instruments: Vec<Instrument> }
 type Catalog = (Instant, Arc<Vec<Instrument>>);
@@ -195,6 +195,7 @@ impl MarketSource for Oanda {
         let needle = super::search_rank::normalize(query);
         if needle.is_empty() { return Ok(Vec::new()); }
         let rows = instruments(&cfg)?;
+        for row in rows.iter() { super::kind::remember(DataSource::Oanda, &row.name, super::kind::oanda(&row.market_type)); }
         let results = rows.iter().filter(|row| {
             super::search_rank::normalize(&row.name).contains(&needle)
                 || super::search_rank::normalize(&row.display_name).contains(&needle)

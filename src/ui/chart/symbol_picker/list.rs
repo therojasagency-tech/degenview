@@ -154,7 +154,7 @@ pub fn row(
         "{}, {}, {}",
         result.symbol,
         result.source.display_name(),
-        market_kind(result.source)
+        super::search::result_kind(result)
     );
     let response = crate::ui::accessibility::label(response, label);
     out.opened_menu = response.secondary_clicked();
@@ -176,7 +176,7 @@ pub fn row(
     result_icon(ui, icon, result);
 
     // The exchange sits at the right edge; a prediction market's chance is left of it.
-    let logo_left = venue_block(ui, rect, content_right, result.source);
+    let logo_left = venue_block_kind(ui, rect, content_right, result.source, super::search::result_kind(result));
     let mut text_right = logo_left;
     if result.source.is_prediction_market()
         && let Some(chance) = result.price
@@ -309,6 +309,9 @@ pub fn marks(
 /// The exchange at the right of a row: its logo and name over what it lists, right-aligned to
 /// `right`. Returns the block's left edge.
 pub fn venue_block(ui: &Ui, rect: Rect, right: f32, source: DataSource) -> f32 {
+    venue_block_kind(ui, rect, right, source, market_kind(source))
+}
+fn venue_block_kind(ui: &Ui, rect: Rect, right: f32, source: DataSource, label: &str) -> f32 {
     let venue = kit::galley(
         ui,
         source.display_name(),
@@ -319,7 +322,7 @@ pub fn venue_block(ui: &Ui, rect: Rect, right: f32, source: DataSource) -> f32 {
     );
     let kind = kit::galley(
         ui,
-        market_kind(source),
+        label,
         SUBTITLE_SIZE,
         REGULAR,
         theme::text_secondary(),

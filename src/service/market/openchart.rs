@@ -20,6 +20,8 @@ struct Symbol {
     exchange: String,
     symbol: String,
     name: String,
+    #[serde(rename = "type", default)]
+    market_type: String,
 }
 
 #[derive(Deserialize)]
@@ -138,6 +140,7 @@ impl MarketSource for OpenChart {
         let mut results = Vec::new();
         for row in search.results {
             if row.id != format!("{}:{}", row.exchange, row.symbol) { continue; }
+            super::kind::remember(DataSource::OpenChart, &row.id, super::kind::tradingview(&row.market_type));
             let label = format!("{} — {} · {}", row.symbol, row.exchange, row.name);
             results.push(SearchResult::new(DataSource::OpenChart, label, row.id));
         }

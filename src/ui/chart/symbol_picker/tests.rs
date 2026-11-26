@@ -437,6 +437,10 @@ fn tab_walks_the_market_tabs_and_each_narrows_the_list() {
     rig.settle();
     assert_eq!(rig.picker.scope, Scope::Crypto);
     assert!(!rig.names().iter().any(|name| name.contains("Grayscale")));
+    for expected in [Scope::Forex, Scope::Futures, Scope::Indices, Scope::Commodities, Scope::Cfds] {
+        rig.key(Key::Tab, Modifiers::NONE);
+        assert_eq!(rig.picker.scope, expected);
+    }
     rig.key(Key::Tab, Modifiers::NONE);
     assert_eq!(rig.picker.scope, Scope::Predictions);
     rig.key(Key::Tab, Modifiers::NONE);
@@ -558,6 +562,11 @@ fn the_watchlists_tab_is_the_last_tab_and_tab_wraps_to_all() {
     for expected in [
         Scope::Stocks,
         Scope::Crypto,
+        Scope::Forex,
+        Scope::Futures,
+        Scope::Indices,
+        Scope::Commodities,
+        Scope::Cfds,
         Scope::Predictions,
         Scope::Dashboards,
         Scope::Watchlists,
@@ -1364,8 +1373,8 @@ fn comparing_offers_only_the_tabs_whose_markets_can_be_drawn_over_a_chart() {
         seen.push(rig.picker.scope);
     }
     assert_eq!(
-        seen[..4],
-        [Scope::Stocks, Scope::Crypto, Scope::Watchlists, Scope::All]
+        seen[..9],
+        [Scope::Stocks, Scope::Crypto, Scope::Forex, Scope::Futures, Scope::Indices, Scope::Commodities, Scope::Cfds, Scope::Watchlists, Scope::All]
     );
 }
 

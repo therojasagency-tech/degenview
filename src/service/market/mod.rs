@@ -24,3 +24,4 @@ pub mod retry;
 pub mod search_rank;
 pub mod trend;
 pub(crate) mod openchart_manager;
+pub(crate) mod kind;

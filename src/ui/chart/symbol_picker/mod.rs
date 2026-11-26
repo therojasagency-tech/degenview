@@ -509,7 +509,7 @@ impl SymbolPicker {
     fn rows(&self, listing: &Listing) -> Rows {
         let lookup = self.lookup();
         let in_scope = |result: &SearchResult| {
-            self.scope.includes(result.source)
+            self.scope.matches(result)
                 && lookup.venue.is_none_or(|venue| venue == result.source)
         };
         match self.scope {
@@ -559,7 +559,7 @@ impl SymbolPicker {
                 });
                 return Rows::of_items(items, head.as_deref());
             }
-            Scope::All | Scope::Stocks | Scope::Crypto => {}
+            _ => {}
         }
         if !lookup.is_empty() {
             let head = lookup.unsupported.as_ref().map(|prefix| {
@@ -920,6 +920,22 @@ impl SymbolPicker {
             })
             .collect();
         let fit = fit_tabs(&widths, full_filter, area.width() - 2.0 * PADDING);
+        let required: f32 = widths.iter().map(|w| w + fit.padding).sum::<f32>()
+            + full_filter.map_or(0.0, |full| FILTER_GAP + if fit.compact { FILTER_COMPACT } else { full });
+        if required > area.width() - 2.0 * PADDING {
+            // A compact category menu keeps every market reachable on small windows.
+            let mut chosen = None;
+            let menu_rect = Rect::from_min_size(pos2(area.left() + PADDING, area.center().y - 13.0), vec2(180.0, 26.0));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(menu_rect), |ui| {
+                egui::ComboBox::from_id_salt("symbol_market_scope").selected_text(self.scope.title()).width(160.0).show_ui(ui, |ui| {
+                    for tab in &tabs {
+                        if ui.selectable_label(*tab == self.scope, tab.title()).clicked() { chosen = Some(*tab); }
+                    }
+                });
+            });
+            let filter = menu.and_then(|menu| self.filter_button(ui, area, &menu, true));
+            return (chosen, filter);
+        }
 
         // A language whose tabs do not fit even in the tightest row is cut where the pull-down
         // starts, never drawn under it.
@@ -1364,7 +1380,7 @@ impl SymbolPicker {
                 );
                 return;
             }
-            Scope::All | Scope::Stocks | Scope::Crypto | Scope::Predictions => {}
+            _ => {}
         }
         if let Some(venue) = lookup.outside(self.scope) {
             widgets::no_results(
