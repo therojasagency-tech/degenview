@@ -450,6 +450,10 @@ pub const SELECT_ALL: Shortcut = Shortcut::new(
     &[Chord::new(Key::A).primary()],
 );
 
+/// Resets the focused chart to the newest bars and natural scale.
+pub const RESET_CHART_VIEW: Shortcut =
+    Shortcut::new(&[Chord::new(Key::R).alt()], &[Chord::new(Key::R).alt()]);
+
 /// Arms a line tool: Alt (Option on a Mac) and a letter, as on TradingView. The J of the
 /// horizontal ray is TradingView's default, which none of its help pages states.
 pub const TOOL_TREND_LINE: Shortcut =
@@ -555,7 +559,7 @@ pub const REDO: Shortcut = Shortcut::new(
 mod tests {
     use super::*;
 
-    const ALL: [(&str, Shortcut); 54] = [
+    const ALL: [(&str, Shortcut); 55] = [
         ("debug continue", DEBUG_CONTINUE),
         ("debug pause", DEBUG_PAUSE),
         ("debug step over", DEBUG_STEP_OVER),
@@ -604,6 +608,7 @@ mod tests {
         ("logarithmic scale", SCALE_LOGARITHMIC),
         ("undo", UNDO),
         ("redo", REDO),
+        ("reset chart view", RESET_CHART_VIEW),
         ("trend line", TOOL_TREND_LINE),
         ("horizontal line", TOOL_HORIZONTAL_LINE),
         ("horizontal ray", TOOL_HORIZONTAL_RAY),
@@ -672,6 +677,15 @@ mod tests {
             SAVE.hint("Save the script"),
             format!("Save the script ({})", SAVE.label())
         );
+    }
+
+    #[test]
+    fn reset_chart_view_matches_option_r_only() {
+        for mac in [true, false] {
+            assert!(RESET_CHART_VIEW.matches_for(mac, Key::R, Modifiers::ALT));
+            assert!(!RESET_CHART_VIEW.matches_for(mac, Key::R, Modifiers::NONE));
+            assert!(!RESET_CHART_VIEW.matches_for(mac, Key::R, Modifiers::ALT | Modifiers::SHIFT));
+        }
     }
 
     #[test]

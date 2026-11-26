@@ -25,3 +25,7 @@ The installed app prefers the embedded executable and never needs the external c
 ## Local ARM64 DMG
 
 After building and verifying the autonomous app, run `bash tools/make-local-dmg.sh`. It uses native macOS `ditto`, `lipo` and `hdiutil`, tests the packaged bridge copy offline, and writes `target/DegenView-arm64.dmg` with an Applications shortcut. No rebuild, Bun, developer checkout, Python or dmgbuild is needed for this packaging step. Existing output is replaced only after the new image passes verification. The image contains application files only, not user settings or credentials. The installer is for local use; distribution signing, notarization and full dependency license review remain separate tasks.
+
+### Personal macOS icon
+
+Set `DEGENVIEW_APP_ICON` to an absolute path to a square PNG (1024 × 1024 recommended, at least 512 × 512) or an existing ICNS when invoking `tools/bundle.sh`. The builder converts the source into a multi-resolution ICNS and includes it in both app bundles without modifying the original brand assets or bundle identifier. Keep the source icon for future builds. The DMG copies that resulting app; no icon-generation tools are needed at runtime. If no override is provided, the original icon is used.

@@ -25,6 +25,19 @@ impl ChartWorkspace {
         }
         // A text field (the properties dialog's) keeps its own undo.
         let typing = ui.ctx().egui_wants_keyboard_input();
+        // Same reset implementation as the canvas navigation button. Only the focused chart,
+        // never a chart under an open picker or layout prompt.
+        if !typing && !self.symbol_picker.is_open() && !self.indicator_picker.is_open()
+            && !self.layout.is_prompting()
+            && let Some(id) = self.resolved_focused_id()
+            && ui.input_mut(|input| shortcut::RESET_CHART_VIEW.consume(input))
+        {
+            if let Some(chart) = self.charts.iter_mut().find(|chart| chart.id == id) {
+                chart.chart.reset_view();
+                ui.ctx().request_repaint();
+            }
+            return;
+        }
         let (undo, redo) =
             ui.input(|input| (shortcut::UNDO.peek(input), shortcut::REDO.peek(input)));
         if undo && !typing {

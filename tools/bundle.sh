@@ -88,6 +88,16 @@ if [ "$embed" = 1 ]; then
     echo "Embedded OpenChartBridge offline test passed"
 fi
 
+# An optional square PNG or existing ICNS supplies the app and alert-agent bundle icon.
+# Generate it before replacing the previous app; do not modify tracked brand assets.
+app_icon="assets/brand/DegenView.icns"
+custom_icon="${DEGENVIEW_APP_ICON:-}"
+if [ -n "$custom_icon" ]; then
+    mkdir -p target
+    /bin/bash tools/make-app-icon.sh "$custom_icon" "$PWD/target/DegenView-custom.icns"
+    app_icon="target/DegenView-custom.icns"
+fi
+
 app="target/DegenView.app"
 helper="$app/Contents/Library/LoginItems/DegenViewAlertAgent.app"
 executable="$app/Contents/MacOS/DegenView"
@@ -108,14 +118,14 @@ if [ "$embed" = 1 ]; then
     echo "OpenChartBridge included in $app"
 fi
 cp target/release/degenview-alert-agent "$helper_executable"
-cp assets/brand/DegenView.icns "$app/Contents/Resources/DegenView.icns"
+cp "$app_icon" "$app/Contents/Resources/DegenView.icns"
 # The fonts compiled into the app are under the SIL OFL, which wants its text and the copyright
 # notice to travel with every copy of them.
 mkdir -p "$app/Contents/Resources/Licenses"
 cp assets/fonts/OFL-JetBrainsMono.txt assets/fonts/OFL-NotoSansSymbols2.txt assets/fonts/OFL-Inter.txt "$app/Contents/Resources/Licenses/"
 cp assets/fonts/README.md "$app/Contents/Resources/Licenses/FONTS.md"
 # The helper shares the app icon: Login Items settings and its notifications show the bundle icon.
-cp assets/brand/DegenView.icns "$helper/Contents/Resources/DegenView.icns"
+cp "$app_icon" "$helper/Contents/Resources/DegenView.icns"
 
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

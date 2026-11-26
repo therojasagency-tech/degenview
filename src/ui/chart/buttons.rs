@@ -269,7 +269,11 @@ pub fn navigation(
         let response = ui
             .interact(rect, id.with(action), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand)
-            .on_hover_text(action.label());
+            .on_hover_text(if action == NavAction::Reset {
+                crate::ui::shortcut::RESET_CHART_VIEW.hint(action.label())
+            } else {
+                action.label().to_owned()
+            });
         let response = accessibility::label(response, action.label());
         paint_button(ui, rect, action.icon(), response.hovered(), true, opacity);
         if response.clicked() && opacity >= CLICKABLE {
