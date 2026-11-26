@@ -216,7 +216,11 @@ pub(super) fn detail_panel(
         Direction::Down => theme::DOWN,
         Direction::Flat => theme::text_secondary(),
     };
-    let last = watchlist::quote::last_text(quote, Some(source));
+    let precision = crate::service::market::kind::market_precision(source, &item.instrument.symbol);
+    let last = match (precision, quote.and_then(|q| q.last)) {
+        (Some(p), Some(v)) => format!("{v:.prec$}",prec=usize::from(p)),
+        _ => watchlist::quote::last_text(quote, Some(source)),
+    };
     let percent = watchlist::quote::percent_text(quote, Some(source));
     let pill_text = if direction == Direction::Flat {
         percent
@@ -246,7 +250,10 @@ pub(super) fn detail_panel(
         price.clone(),
         theme::text_primary(),
     );
-    let change = watchlist::quote::change_text(quote, Some(source));
+    let change = match (precision, quote.and_then(|q| q.change)) {
+        (Some(p), Some(v)) => format!("{v:+.prec$}",prec=usize::from(p)),
+        _ => watchlist::quote::change_text(quote, Some(source)),
+    };
     let change_galley = kit::galley(ui, &change, 12.0, kit::MEDIUM, move_color, width);
     let change_at = Pos2::new(left, hero_top + DETAIL_HERO - 18.0);
     let after = change_at.x + change_galley.size().x;
@@ -287,11 +294,11 @@ pub(super) fn detail_panel(
         (
             "status",
             tr!("Status"),
-            freshness.label(),
-            Some(freshness_color(freshness)),
+            freshness.label_for_source(source),
+            Some(if source == DataSource::OpenChart { theme::text_secondary() } else { freshness_color(freshness) }),
         ),
         ("symbol", tr!("Symbol"), symbol.as_str(), None),
-        ("updated", tr!("Updated"), updated.as_str(), None),
+        ("updated", if source == DataSource::OpenChart { "Consultado" } else { tr!("Updated") }, updated.as_str(), None),
     ];
     for (index, (key, label, value, dot)) in tiles.into_iter().enumerate() {
         let (column, row) = (index % 2, index / 2);

@@ -72,6 +72,7 @@ pub fn chunk_size(source: DataSource) -> usize {
         DataSource::Mexc => 2_500,
         DataSource::DexScreener => 30,
         DataSource::Oanda => 50,
+        DataSource::OpenChart => 4,
         _ => 100,
     }
 }
@@ -115,7 +116,8 @@ impl QuoteProvider for LiveProvider {
                     .map(Outcome::from_quotes)
                     .map_err(|error| if error.is_rate_limited() { QuoteFailure::RateLimited } else { QuoteFailure::Failed(error.to_string()) })
             }
-            DataSource::CoinMarketCap | DataSource::OpenChart => Ok(Outcome::default()),
+            DataSource::OpenChart => Ok(openchart_snapshots(requests)),
+            DataSource::CoinMarketCap => Ok(Outcome::default()),
         }
     }
 
@@ -128,6 +130,28 @@ impl QuoteProvider for LiveProvider {
         .ok()?;
         parse_chain(&body, address)
     }
+}
+
+// At most four history connections per page; the planner bounds the entire round to one page.
+fn openchart_snapshots(requests: &[QuoteRequest]) -> Outcome {
+    let mut outcome = Outcome::default();
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = requests.iter().take(4).map(|request| {
+            (request, scope.spawn(move || crate::service::market::openchart::watchlist_quote(&request.symbol)))
+        }).collect();
+        for (request, handle) in handles {
+            match handle.join() {
+                Ok(Ok(quote)) => { outcome.quotes.insert(request.symbol.clone(), quote); }
+                Ok(Err(error)) => {
+                    let failure = if error.is_rate_limited() { QuoteFailure::RateLimited }
+                        else { QuoteFailure::Failed(error.to_string()) };
+                    outcome.failed.push((vec![request.symbol.clone()], failure));
+                }
+                Err(_) => outcome.failed.push((vec![request.symbol.clone()], QuoteFailure::Failed("OpenChart snapshot worker stopped".into()))),
+            }
+        }
+    });
+    outcome
 }
 
 /// A GET that maps HTTP failures onto `QuoteFailure`.

@@ -112,6 +112,23 @@ pub(super) fn decode_bar(bar: Bar, tf: Timeframe) -> Result<Kline, ProviderError
         })
 }
 
+/// A daily snapshot, not a tick quote. A closed market's last two sessions are valid too.
+pub fn watchlist_quote(symbol: &str) -> Result<crate::model::watchlist::quote::SourceQuote, ProviderError> {
+    let bars = OPENCHART.fetch_klines(symbol, Timeframe::DAY_1, 2)?;
+    daily_quote(&bars)
+}
+fn daily_quote(bars: &[Kline]) -> Result<crate::model::watchlist::quote::SourceQuote, ProviderError> {
+    let (last, previous) = bars.split_last().ok_or_else(|| ProviderError::other("No daily bars returned."))?;
+    if !last.close.is_finite() { return Err(ProviderError::data("Invalid daily close")); }
+    Ok(crate::model::watchlist::quote::SourceQuote {
+        price: last.close,
+        previous_day_price: previous.last().filter(|bar| bar.open_time < last.open_time).map(|bar| bar.close),
+        // No tick timestamp is supplied. The book records the local retrieval time.
+        timestamp_ms: None,
+        ..Default::default()
+    })
+}
+
 impl MarketSource for OpenChart {
     fn fetch_klines(&self, symbol: &str, timeframe: Timeframe, limit: u32) -> Result<Vec<Kline>, ProviderError> {
         let token = resolution(timeframe)?;
@@ -151,6 +168,18 @@ impl MarketSource for OpenChart {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn watchlist_uses_last_two_native_sessions() {
+        let history: History = serde_json::from_str(r#"{"provider":"tradingview","symbol":"FX:EURUSD","resolution":"1d","adjustment":"raw","bars":[{"time":1767537000000,"open":1.1,"high":1.2,"low":1.0,"close":1.1,"volume":null},{"time":1767623400000,"open":1.1,"high":1.2,"low":1.0,"close":1.15,"volume":null}]}"#).unwrap();
+        let bars = decode_history(history,"FX:EURUSD",Timeframe::DAY_1,"1d").unwrap();
+        let quote = daily_quote(&bars).unwrap();
+        assert_eq!(quote.price,1.15);
+        assert_eq!(quote.previous_day_price,Some(1.1));
+        assert_eq!(quote.timestamp_ms,None);
+        assert_eq!(daily_quote(&bars[1..]).unwrap().previous_day_price,None);
+        assert!(daily_quote(&[]).is_err());
+    }
 
     #[test]
     fn native_interval_tokens_preserve_case() {

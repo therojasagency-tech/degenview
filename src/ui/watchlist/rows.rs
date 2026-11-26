@@ -292,9 +292,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
     let quote = quote.filter(|_| item.card.is_none());
     let direction = watchlist::quote::direction(quote);
     let source = Some(item.instrument.source);
-    let oanda_precision = if item.instrument.source == DataSource::Oanda {
-        crate::service::market::oanda::display_precision(&item.instrument.symbol)
-    } else { None };
+    let oanda_precision = crate::service::market::kind::market_precision(item.instrument.source, &item.instrument.symbol);
     let last_text = || {
         if let (Some(p), Some(v)) = (oanda_precision, quote.and_then(|q| q.last)) {
             format!("{v:.prec$}", prec = usize::from(p))
@@ -365,7 +363,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
                     .map_or(watchlist::quote::Freshness::Unavailable, |quote| {
                         quote.freshness
                     })
-                    .label()
+                    .label_for_source(item.instrument.source)
                     .to_owned(),
                 weak,
             ),
@@ -436,6 +434,7 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
                 text.push('\n');
                 text.push_str(basis.label());
             }
+            if let Some(note) = quote.and_then(|q| q.note.as_deref()) { text.push('\n'); text.push_str(note); }
             text
         }
     };

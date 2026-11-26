@@ -441,6 +441,8 @@ fn status_line(ui: &Ui, at: Pos2, result: &SearchResult, quote: Option<&Watchlis
             Some(Freshness::MarketClosed) => (tr!("Market closed"), false),
             _ => return 0.0,
         },
+        DataSource::OpenChart => (if quote.is_some_and(|q| q.last.is_some()) { "Última vela D1 disponible" } else { "Horario de mercado no disponible" }, false),
+        DataSource::Oanda => ("Horario según instrumento", false),
         _ => (tr!("Open 24/7"), true),
     };
     let galley = kit::galley(

@@ -159,6 +159,8 @@ pub struct Engine {
     known: HashMap<String, WatchlistQuote>,
     /// When each price was last confirmed by its provider; what freshness is judged by.
     received: HashMap<String, i64>,
+    // Rotation includes failed attempts so a single unavailable symbol cannot starve its neighbours.
+    openchart_asked: HashMap<String, i64>,
     sources: HashMap<DataSource, SourceState>,
     rejected: HashMap<String, i64>,
     chains: HashMap<String, String>,
@@ -183,6 +185,7 @@ impl Engine {
             consumers: HashMap::new(),
             known: HashMap::new(),
             received: HashMap::new(),
+            openchart_asked: HashMap::new(),
             sources: HashMap::new(),
             rejected: HashMap::new(),
             chains: HashMap::new(),
@@ -365,14 +368,12 @@ impl Engine {
             return;
         }
         for (key, instrument) in &wanted {
-            if matches!(instrument.source, DataSource::CoinMarketCap | DataSource::OpenChart)
+            if instrument.source == DataSource::CoinMarketCap
                 && !self.known.contains_key(key) {
                 self.publish(
                     key,
                     WatchlistQuote::unsupported(Some(
-                        if instrument.source == DataSource::OpenChart {
-                            tr!("OpenChart watchlist quotes are not available yet")
-                        } else if instrument.symbol.starts_with("portfolio:") {
+                        if instrument.symbol.starts_with("portfolio:") {
                             tr!("Portfolio cards have no market quote")
                         } else {
                             tr!("Index charts have no market quote")
@@ -401,6 +402,7 @@ impl Engine {
             .known
             .keys()
             .chain(self.received.keys())
+            .chain(self.openchart_asked.keys())
             .chain(self.rejected.keys())
             .chain(self.stream_subscribed_at.keys())
             .chain(self.stream_references.keys())
@@ -427,6 +429,7 @@ impl Engine {
             self.idle_since.remove(key);
             self.known.remove(key);
             self.received.remove(key);
+            self.openchart_asked.remove(key);
             self.rejected.remove(key);
             self.stream_subscribed_at.remove(key);
             self.stream_references.remove(key);
@@ -503,7 +506,7 @@ impl Engine {
             return None;
         }
         match instrument.source {
-            DataSource::CoinMarketCap | DataSource::OpenChart => None,
+            DataSource::CoinMarketCap => None,
             source if source.streams_quotes() => {
                 // The socket supplies prices; REST fills a product it has not answered, and
                 // refreshes one it has gone quiet on, so a thin market's price never ages.
@@ -531,7 +534,10 @@ impl Engine {
     }
 
     /// One round: every due source gets one batched request.
-    pub fn plan(&mut self, now: i64) -> Vec<Planned> {
+    #[cfg(test)]
+    pub fn plan(&mut self, now: i64) -> Vec<Planned> { self.plan_sources(now, |_| true) }
+
+    fn plan_sources(&mut self, now: i64, include: impl Fn(DataSource) -> bool) -> Vec<Planned> {
         let wanted = self.wanted();
         self.prune(&wanted, now);
         self.age_quotes(now);
@@ -540,6 +546,7 @@ impl Engine {
             let Some(source) = self.polled(key, instrument, now) else {
                 continue;
             };
+            if !include(source) { continue; }
             let request = QuoteRequest {
                 symbol: instrument.api_symbol(),
                 chain: self.chains.get(key).cloned(),
@@ -553,11 +560,16 @@ impl Engine {
                 .requests
                 .push((key.clone(), request));
         }
-        let plan: Vec<Planned> = by_source
+        let mut plan: Vec<Planned> = by_source
             .into_values()
             .filter(|planned| self.is_due(planned.source, now))
             .collect();
-        for planned in &plan {
+        for planned in &mut plan {
+            if planned.source == DataSource::OpenChart {
+                planned.requests.sort_by(|(a,_),(b,_)| self.openchart_asked.get(a).cmp(&self.openchart_asked.get(b)).then_with(|| a.cmp(b)));
+                planned.requests.truncate(4);
+                for (key, _) in &planned.requests { self.openchart_asked.insert(key.clone(), now); }
+            }
             self.sources.entry(planned.source).or_default().last_poll_ms = now;
         }
         plan
@@ -912,14 +924,24 @@ fn bisect(
 
 /// One full round against a shared engine: look up missing DEX networks, plan, fetch every
 /// due source in parallel, apply. The engine lock is never held across network calls.
+#[cfg(test)]
 pub fn poll(engine: &Mutex<Engine>, provider: &dyn QuoteProvider, now: &dyn Fn() -> i64) {
-    let missing = lock(engine).missing_chains();
+    poll_sources(engine, provider, now, |_| true, true);
+}
+pub fn poll_regular(engine: &Mutex<Engine>, provider: &dyn QuoteProvider, now: &dyn Fn() -> i64) {
+    poll_sources(engine, provider, now, |source| source != DataSource::OpenChart, true);
+}
+pub fn poll_openchart(engine: &Mutex<Engine>, provider: &dyn QuoteProvider, now: &dyn Fn() -> i64) {
+    poll_sources(engine, provider, now, |source| source == DataSource::OpenChart, false);
+}
+fn poll_sources(engine: &Mutex<Engine>, provider: &dyn QuoteProvider, now: &dyn Fn() -> i64, include: impl Fn(DataSource)->bool, resolve_chains: bool) {
+    let missing = if resolve_chains { lock(engine).missing_chains() } else { Vec::new() };
     for instrument in missing {
         let chain = provider.resolve_chain(&instrument.symbol);
         lock(engine).set_chain(&instrument, chain);
     }
 
-    let plan = lock(engine).plan(now());
+    let plan = lock(engine).plan_sources(now(), include);
     if plan.is_empty() {
         return;
     }
@@ -1800,13 +1822,16 @@ mod tests {
     }
 
     #[test]
-    fn openchart_watchlist_quotes_are_unsupported_not_polled() {
+    fn openchart_watchlist_rotates_bounded_batches() {
         let (engine, book, provider) = setup();
-        let market = id(DataSource::OpenChart, "OANDA:EURUSD");
-        lock(&engine).update(1, vec![market.clone()], true, T0);
+        let markets: Vec<_> = (0..6).map(|i| id(DataSource::OpenChart,&format!("TEST:S{i}"))).collect();
+        for market in &markets { provider.price(&market.symbol,1.1); }
+        lock(&engine).update(1, markets.clone(), true, T0);
         round(&engine, &provider, T0);
-        assert!(provider.calls().is_empty());
-        assert_eq!(book.get(&market).unwrap().freshness, Freshness::Unsupported);
+        assert_eq!(provider.calls()[0].1.len(),4);
+        round(&engine, &provider, T0+15_000);
+        assert_eq!(provider.calls()[1].1.len(),4);
+        for market in &markets { assert_eq!(last(&book,market),Some(1.1)); }
     }
 
     #[test]

@@ -62,6 +62,16 @@ impl WatchlistQuoteCoordinator {
         let engine = Arc::new(Mutex::new(Engine::new(book.clone(), config)));
         let shutdown = Arc::new(AtomicBool::new(false));
         {
+            let (engine, shutdown, provider, repaint) = (Arc::clone(&engine), Arc::clone(&shutdown), Arc::clone(&provider), Arc::clone(&repaint));
+            std::thread::spawn(move || {
+                while !shutdown.load(Ordering::Acquire) {
+                    engine::poll_openchart(&engine, provider.as_ref(), &now_ms);
+                    repaint();
+                    std::thread::sleep(Duration::from_secs(5));
+                }
+            });
+        }
+        {
             let (engine, book, shutdown) =
                 (Arc::clone(&engine), book.clone(), Arc::clone(&shutdown));
             std::thread::spawn(move || run(&engine, &book, provider.as_ref(), &repaint, &shutdown));
@@ -155,7 +165,7 @@ fn run(
 
         if active && now - last_round >= interval {
             last_round = now;
-            engine::poll(engine, provider, &now_ms);
+            engine::poll_regular(engine, provider, &now_ms);
         }
 
         let revision = book.revision();

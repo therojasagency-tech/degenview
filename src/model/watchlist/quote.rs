@@ -27,9 +27,8 @@ impl ChangeBasis {
             | DataSource::Mexc
             | DataSource::CoinGecko
             | DataSource::DexScreener => Self::Rolling24h,
-            DataSource::Alpaca | DataSource::Oanda => Self::PreviousClose,
-            DataSource::Polymarket | DataSource::Kalshi | DataSource::CoinMarketCap
-            | DataSource::OpenChart => Self::Window,
+            DataSource::Alpaca | DataSource::Oanda | DataSource::OpenChart => Self::PreviousClose,
+            DataSource::Polymarket | DataSource::Kalshi | DataSource::CoinMarketCap => Self::Window,
         }
     }
 
@@ -60,6 +59,10 @@ impl Freshness {
             Self::Unavailable => tr!("No quote"),
             Self::Unsupported => tr!("No quotes for this market"),
         }
+    }
+
+    pub fn label_for_source(self, source: DataSource) -> &'static str {
+        if source == DataSource::OpenChart && self == Self::Live { "D1 snapshot" } else { self.label() }
     }
 
     /// Whether the price can be shown as current.
@@ -161,7 +164,7 @@ impl WatchlistQuote {
             volume_kind: quote.volume_kind,
             timestamp_ms: quote.timestamp_ms.or(Some(received_at_ms)),
             freshness: evaluate_freshness(source, received_at_ms, received_at_ms),
-            note: None,
+            note: (source == DataSource::OpenChart).then(|| "Última vela D1 disponible; puede haber retraso. Hora de consulta, no del último tick.".to_owned()),
         }
     }
 }
@@ -181,7 +184,8 @@ pub fn refresh_interval_secs(source: DataSource) -> u64 {
         | DataSource::Alpaca => 5,
         DataSource::DexScreener | DataSource::Oanda => 10,
         DataSource::CoinGecko | DataSource::Polymarket | DataSource::Kalshi => 30,
-        DataSource::CoinMarketCap | DataSource::OpenChart => 0,
+        DataSource::OpenChart => 15,
+        DataSource::CoinMarketCap => 0,
     }
 }
 
@@ -200,7 +204,8 @@ pub fn maximum_age_secs(source: DataSource) -> i64 {
         // Coinbase is refreshed from REST every 30 seconds when the socket has been quiet.
         DataSource::Coinbase => 90,
         DataSource::CoinGecko | DataSource::Polymarket | DataSource::Kalshi => 120,
-        DataSource::CoinMarketCap | DataSource::OpenChart => 0,
+        DataSource::OpenChart => 120,
+        DataSource::CoinMarketCap => 0,
     }
 }
 

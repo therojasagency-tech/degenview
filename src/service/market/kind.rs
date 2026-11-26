@@ -74,3 +74,18 @@ mod tests {
         assert_eq!(of(&SearchResult::new(DataSource::OpenChart,"Fixture","OTHER:EURUSD")),Kind::Other);
     }
 }
+
+pub fn market_precision(source: DataSource, symbol: &str) -> Option<u8> {
+    if source == DataSource::Oanda {
+        if let Some(precision) = crate::service::oanda_display_precision(symbol) { return Some(precision); }
+    }
+    if !matches!(source, DataSource::Oanda | DataSource::OpenChart) { return None; }
+    let ticker = symbol.split_once(':').map_or(symbol, |(_, s)| s);
+    let ticker = ticker.strip_suffix("_TEST").unwrap_or(ticker).replace('_', "").to_ascii_uppercase();
+    const FX: &[&str] = &["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "NOK", "SEK", "DKK", "SGD", "HKD", "PLN", "MXN", "ZAR", "TRY", "CNH", "CZK", "HUF"];
+    if ticker.len() != 6 || !ticker.is_ascii() { return None; }
+    let (base, quote) = ticker.split_at(3);
+    if FX.contains(&base) && FX.contains(&quote) {
+        Some(if quote == "JPY" { 3 } else { 5 })
+    } else { None }
+}
