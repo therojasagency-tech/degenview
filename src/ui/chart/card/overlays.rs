@@ -418,11 +418,13 @@ impl ChartCard {
         view: &View,
         style: &CanvasStyle,
         last_price_tag: Option<TagBand>,
+        pine_tags: Vec<super::scripts::IndicatorTag>,
     ) {
         let half = style.tag_half_height();
         let format = self.appearance.price_format();
         let mode = view.scale.mode;
-        let mut axis: Vec<(f32, Color32, String)> = Vec::new();
+        let has_pine_tags = !pine_tags.is_empty();
+        let mut axis: Vec<(f32, Color32, String)> = pine_tags;
         let mut inside: Vec<(f32, Color32, String)> = Vec::new();
         for line in frame
             .lines
@@ -444,7 +446,10 @@ impl ChartCard {
                 _ => inside.push(tag),
             }
         }
-        for (y, fill, text) in spread(axis, half, plot, last_price_tag) {
+        let placed = if has_pine_tags {
+            super::scripts::place_indicator_tags(axis, half, plot, last_price_tag.as_slice())
+        } else { spread(axis, half, plot, last_price_tag) };
+        for (y, fill, text) in placed {
             let tag = Rect::from_min_max(
                 Pos2::new(plot.right() + 3.0, y - half),
                 Pos2::new(rect.right() - 3.0, y + half),

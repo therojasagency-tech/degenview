@@ -6,7 +6,7 @@
 //! nothing to point at: no crosshair, selection, hover, drag, button or tooltip.
 
 use super::frame::{
-    Decor, FrameData, FrameLayout, Overlays, PaneSlot, Placed, paint_pane_title,
+    Decor, FrameData, FrameLayout, Overlays, Placed,
     split_forced_overlays,
 };
 use super::overlays::OverlayFrame;
@@ -122,10 +122,6 @@ struct SnapshotOverlays<'a> {
 }
 
 impl Overlays for SnapshotOverlays<'_> {
-    fn pane(&mut self, painter: &egui::Painter, layout: &FrameLayout, slot: &PaneSlot) {
-        paint_pane_title(painter, layout, slot, false);
-    }
-
     fn finish(
         &mut self,
         _data: &FrameData,

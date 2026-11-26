@@ -45,8 +45,9 @@ impl ChartCard {
         show_volume: bool,
         style: &CanvasStyle,
         main_visible: bool,
+        pane_cursor: Option<(&super::scripts::PaneGeometry, &VisualOutput, f32)>,
         info: &CrosshairBars,
-    ) {
+    ) -> Option<f32> {
         let line = style.crosshair;
         let caps = self.cursor.caps();
 
@@ -65,13 +66,13 @@ impl ChartCard {
         }
 
         // Horizontal line + price pill — only the chart the pointer is over.
-        if main_visible && crosshair.owner_id == chart_id && !crosshair.frozen {
+        if pane_cursor.is_none() && main_visible && crosshair.owner_id == chart_id && !crosshair.frozen {
             let y = scale.y(crosshair.price);
             if plot.y_range().contains(y) {
                 if caps.lines {
                     canvas::horizontal(painter, (plot.left(), plot.right()), y, line);
                 }
-                if caps.axis_tags {
+                if caps.axis_tags && style.indicator_readouts.crosshair_tags {
                     let half = style.tag_half_height();
                     let price_tag = Rect::from_min_max(
                         Pos2::new(plot.right() + 3.0, y - half),
@@ -90,16 +91,29 @@ impl ChartCard {
             }
         }
 
-        let raw_index = ((x - plot.left()) / slot_width - lead).floor() as isize;
-        let Some((index, candle)) = usize::try_from(raw_index)
-            .ok()
-            .and_then(|index| candles.get(index).map(|candle| (index, candle)))
-        else {
-            return;
-        };
+        if let Some((geometry, pine, y)) = pane_cursor.filter(|_| crosshair.owner_id == chart_id && !crosshair.frozen) {
+            if caps.lines {
+                canvas::horizontal(painter,(geometry.plot.left(),geometry.plot.right()),y,line);
+            }
+            if caps.axis_tags && style.indicator_readouts.crosshair_tags {
+                let half = style.tag_half_height();
+                let tag = Rect::from_min_max(Pos2::new(plot.right()+3.0,y-half),Pos2::new(rect.right()-3.0,y+half));
+                let value = geometry.scale.price(y);
+                painter.rect_filled(tag,3.0,Color32::from_gray(79));
+                price_text::paint(painter,tag.center(),Align2::CENTER_CENTER,
+                    &super::scripts::format_value(pine,None,value,PriceFormat::AUTO),
+                    style.price_font(),Color32::WHITE);
+            }
+        }
 
-        if caps.axis_tags && !crosshair.frozen {
-            let date = self.time_text(candle.open_time);
+        let raw_index = ((x - plot.left()) / slot_width - lead).floor() as isize;
+        let selected = usize::try_from(raw_index).ok()
+            .and_then(|index| candles.get(index).map(|candle| (index,candle)));
+        let time = selected.map(|(_,bar)| bar.open_time)
+            .or_else(|| crosshair.time.filter(|t| t.is_finite()).map(|t| t.round() as i64));
+
+        if caps.axis_tags && style.indicator_readouts.crosshair_tags && !crosshair.frozen && let Some(time) = time {
+            let date = self.time_text(time);
             let time_tag_width = self.time_tag_width(style);
             let time_tag = Rect::from_center_size(
                 Pos2::new(x, rect.bottom() - style.time_axis_height() / 2.0),
@@ -119,6 +133,8 @@ impl ChartCard {
             );
         }
 
+        let (index, candle) = selected?;
+        if !main_visible { return None; }
         // The header covers the plot's top, so the readouts start under it.
         let below_header = self.below_header(plot);
         let readout_bottom = if style.ohlc_readout && caps.readout {
@@ -175,6 +191,7 @@ impl ChartCard {
                 );
             }
         }
+        Some(readout_bottom)
     }
 
     /// The box of values for the bar under the crosshair, in the plot's top-left corner.

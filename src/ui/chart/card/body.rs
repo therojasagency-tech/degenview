@@ -581,6 +581,17 @@ impl ChartCard {
         );
         let time = self.takes_part_in_sync(source).then(|| TimeAxis::new(bars));
         body::report_hover(&mut pointer, &response, plot, &view, &projection, time);
+        if pointer.hover_x_fraction.is_none()
+            && let Some(pos) = response.hover_pos().filter(|pos| layout.pane_rects.iter().zip(&layout.pane_specs)
+                .any(|(pane,spec)| !spec.collapsed && pane.height() > 16.0 && super::scripts::pane_plot(*pane,plot).contains(*pos)))
+        {
+            pointer.hover_x_fraction = Some(f64::from((pos.x-plot.left())/plot.width()));
+            let slots = view.geometry(plot, bars.len()).slots();
+            pointer.hover_time = self.takes_part_in_sync(source).then(|| TimeAxis::new(bars).time_at(slots.at(pos.x))).flatten();
+            // The workspace shares time, not a pane's value as though it were a market price.
+            // No drawing anchor is emitted from an indicator pane.
+            pointer.hover_price = bars.last().map(|bar| bar.close);
+        }
 
         pointer.clicked = response.clicked();
         pointer

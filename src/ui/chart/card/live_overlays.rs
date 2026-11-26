@@ -1,7 +1,7 @@
 //! What the live chart adds to a frame on top of what a snapshot shows: everything the user can
 //! point at.
 
-use super::frame::{FrameData, FrameLayout, Overlays, PaneSlot, paint_pane_title};
+use super::frame::{FrameData, FrameLayout, Overlays, PaneSlot};
 use super::overlays::OverlayFrame;
 use super::*;
 use crate::ui::chart::scale_menu;
@@ -100,9 +100,8 @@ impl Overlays for LiveOverlays<'_> {
         });
     }
 
-    fn pane(&mut self, painter: &egui::Painter, layout: &FrameLayout, slot: &PaneSlot) {
+    fn pane(&mut self, _painter: &egui::Painter, layout: &FrameLayout, slot: &PaneSlot) {
         let hovered = self.ui.rect_contains_pointer(slot.rect);
-        paint_pane_title(painter, layout, slot, hovered);
         if let Some(action) = buttons::pane(
             self.ui,
             egui::Id::new(("pane-buttons", self.chart_id, slot.id)),

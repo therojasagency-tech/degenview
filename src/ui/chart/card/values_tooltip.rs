@@ -187,7 +187,8 @@ impl ChartCard {
                     .clone()
                     .filter(|title| !title.is_empty())
                     .unwrap_or_else(|| tr!("Plot").to_owned());
-                let row = (name, price_format.format(value));
+                let fallback = if output.overlay { price_format } else { PriceFormat::AUTO };
+                let row = (name, super::scripts::format_value(output, Some(plot.id), value, fallback));
                 if !rows.contains(&row) {
                     rows.push(row);
                 }

@@ -11,6 +11,8 @@ use super::overlays::OverlayFrame;
 use super::*;
 use crate::i18n::tr;
 use crate::model::chart::canvas::PaneHeights;
+use crate::model::chart::sync::TimeAxis;
+use super::scripts::PaneGeometry;
 use crate::ui::pine::chart_render::{hover_targets_in_order, target_at};
 
 /// A script's output, how it is ordered against the chart, and the instance it belongs to.
@@ -144,26 +146,6 @@ pub(super) trait Overlays {
     }
 }
 
-/// The title a script pane carries when its buttons are wanted: the buttons' own cue. A snapshot
-/// shows it as the idle chart does.
-pub(super) fn paint_pane_title(
-    painter: &egui::Painter,
-    layout: &FrameLayout,
-    slot: &PaneSlot,
-    hovered: bool,
-) {
-    let buttons_wanted =
-        layout.style.pane_buttons.wanted(hovered) || slot.collapsed || slot.maximized;
-    if buttons_wanted && buttons::pane_fits(slot.rect, layout.plot.right()) {
-        painter.text(
-            Pos2::new(slot.rect.left() + 8.0, slot.rect.top() + 6.0),
-            Align2::LEFT_TOP,
-            truncated(slot.name, 36),
-            FontId::proportional(11.0),
-            layout.style.text_color,
-        );
-    }
-}
 
 impl ChartCard {
     /// Splits `rect` into the price chart, the script panes under it and the axes.
@@ -304,8 +286,18 @@ impl ChartCard {
                 let shown = view.end - view.start;
                 for (pane_rect, (_, pine)) in pane_rects.iter().zip(&pane_outputs) {
                     let height = (pane_rect.height() - 16.0).max(0.0);
-                    for (_, label) in pane_labels(pine, shown, height, style) {
+                    for (_, label) in pane_labels(pine, shown, bars.len() - view.end, height, style) {
                         widest = widest.max(measure(&label));
+                    }
+                }
+            }
+            if style.indicator_readouts.axis_values {
+                for (pine, _, _) in data.outputs {
+                    let fallback = if pine.overlay { self.appearance.price_format() } else { PriceFormat::AUTO };
+                    for series in pine.plots.iter().filter(|p| p.display & crate::pine::outputs::DISPLAY_PRICE_SCALE != 0).take(64) {
+                        if let Some((value,_)) = scripts::plot_sample(series, scripts::ReadoutAt::Latest) {
+                            widest = widest.max(measure(&scripts::format_value(pine, Some(series.id), value, fallback)));
+                        }
                     }
                 }
             }
@@ -524,6 +516,26 @@ impl ChartCard {
         overlays.after_tables(&main_painter, data, layout, view);
         // Script tooltips: only looked for while the pointer is over the plot.
         let pointer = overlays.pointer();
+        let slots = view.geometry(plot, bars.len()).slots();
+        let over_pane = |pos: Pos2| layout.pane_rects.iter().zip(&layout.pane_specs)
+            .any(|(pane,spec)| !spec.collapsed && pane.height() > 16.0 && scripts::pane_plot(*pane,plot).contains(pos));
+        // Pane hover needs its own local Y, but the same time and X as every other chart.
+        // A preview also has no workspace crosshair hub, so it may originate its own cursor.
+        let local = pointer.filter(|pos| over_pane(*pos)
+            || (main_visible && plot.contains(*pos) && (decor.chart_id == u64::MAX || decor.crosshair.is_none())))
+            .map(|pos| CrosshairInfo {
+                frozen: false, owner_id: decor.chart_id,
+                x_fraction: f64::from((pos.x-plot.left())/plot.width()),
+                time: self.takes_part_in_sync(data.source).then(|| TimeAxis::new(bars).time_at(slots.at(pos.x))).flatten(),
+                price: if plot.contains(pos) { scale.price(pos.y) } else { shown.last().map_or(0.0, |bar| bar.close) },
+            });
+        let effective_crosshair = local.as_ref().or(decor.crosshair);
+        let shared = effective_crosshair.and_then(|crosshair| {
+            self.crosshair_column(crosshair, decor.chart_id, data.source, plot, slots, bars).map(|x| (crosshair,x))
+        });
+        let readout_at = scripts::readout_at(shared.map(|(_,x)| x), plot, slot_width, lead, shown.len(), tail);
+        let pane_pointer = pointer.filter(|p| over_pane(*p));
+        let mut active_pane: Option<(PaneGeometry, &VisualOutput, f32)> = None;
         let mut tooltip = pointer
             .filter(|pointer| plot.contains(*pointer))
             .and_then(|pointer| {
@@ -550,6 +562,11 @@ impl ChartCard {
             view,
             style,
             last_price_tag,
+            if style.indicator_readouts.axis_values && main_visible {
+                layout.overlay_outputs.iter().flat_map(|(pine,_)| {
+                    scripts::last_tags(pine, self.appearance.price_format(), scale, plot)
+                }).collect()
+            } else { Vec::new() },
         );
         self.draw_time_axis(painter, rect, shown, &ticks, &x_for, plot.right(), style);
         // The tags of the lines at a price or a time sit on the axes, which the drawings'
@@ -574,11 +591,11 @@ impl ChartCard {
                     );
                 }
             }
-            if !collapsed {
+            if !collapsed && let Some(geometry) = PaneGeometry::new(*pane_rect, plot, pine, shown.len(), tail) {
                 let pane_tooltip = draw_script_pane(
                     painter,
                     *pane_rect,
-                    plot,
+                    &geometry,
                     pine,
                     shown,
                     tail,
@@ -589,6 +606,14 @@ impl ChartCard {
                     pointer,
                 );
                 tooltip = tooltip.or(pane_tooltip);
+                let active_y = pane_pointer.filter(|pos| geometry.plot.contains(*pos)).map(|pos| pos.y);
+                if style.indicator_readouts.axis_values {
+                    let avoid = active_y.filter(|_| self.cursor.caps().axis_tags && style.indicator_readouts.crosshair_tags)
+                        .map(|y| TagBand { top: y-style.tag_half_height(), bottom: y+style.tag_half_height() });
+                    scripts::paint_indicator_tags(painter, geometry.plot, pane_rect.right(), style,
+                        scripts::last_tags(pine, PriceFormat::AUTO, &geometry.scale, geometry.plot), avoid.as_slice());
+                }
+                if let Some(y) = active_y { active_pane = Some((geometry, &***pine, y)); }
             }
             // The price axis' edge runs on through the pane.
             canvas::vertical(
@@ -597,12 +622,17 @@ impl ChartCard {
                 (pane_rect.top(), pane_rect.bottom()),
                 canvas::solid(style.scale_line),
             );
-            if *id != PREVIEW_INSTANCE {
-                let name = self
-                    .instances
-                    .iter()
-                    .find(|instance| instance.id == *id)
-                    .map_or("", |instance| instance.name.as_str());
+            let name = self.instances.iter().find(|instance| instance.id == *id)
+                .map_or("", |instance| instance.name.as_str());
+            if pane_rect.height() >= 16.0 {
+                let right = if *id != PREVIEW_INSTANCE && buttons::pane_fits(*pane_rect, plot.right()) {
+                    buttons::pane_rects(*pane_rect, plot.right()).0.left() - 4.0
+                } else { plot.right() };
+                let area = Rect::from_min_max(pane_rect.min,
+                    Pos2::new(right, (pane_rect.top()+22.0).min(pane_rect.bottom())));
+                scripts::paint_status(painter, area, pine, name, readout_at, PriceFormat::AUTO, style);
+            }
+            if *id != PREVIEW_INSTANCE && pane_rect.height() >= 16.0 {
                 overlays.pane(
                     painter,
                     layout,
@@ -655,12 +685,9 @@ impl ChartCard {
                 main_visible,
             );
         }
-        if let Some((crosshair, x)) = decor.crosshair.and_then(|crosshair| {
-            let slots = view.geometry(plot, bars.len()).slots();
-            self.crosshair_column(crosshair, decor.chart_id, data.source, plot, slots, bars)
-                .map(|x| (crosshair, x))
-        }) {
-            self.draw_crosshair(
+        let mut readout_bottom = self.below_header(plot).top();
+        if let Some((crosshair, x)) = shared {
+            if let Some(bottom) = self.draw_crosshair(
                 painter,
                 plot,
                 rect,
@@ -675,6 +702,7 @@ impl ChartCard {
                 data.source.provides_volume(),
                 style,
                 main_visible,
+                active_pane.as_ref().map(|(geometry,pine,y)| (geometry,*pine,*y)),
                 &CrosshairBars {
                     chart_type,
                     synthetic: shown_synthetic,
@@ -695,10 +723,23 @@ impl ChartCard {
                         .map(|(_, output)| &***output)
                         .collect(),
                 },
-            );
+            ) { readout_bottom = bottom; }
         }
 
-        if let Some(crosshair) = decor.crosshair.filter(|_| main_visible) {
+        // Overlay indicators keep their existing control chips; their value readout is placed
+        // below OHLC so it cannot collide with the crosshair's header.
+        if main_visible {
+            let mut top = readout_bottom.max(self.below_header(plot).top()) + 4.0;
+            for (pine, _, id) in data.outputs.iter().filter(|(pine,_,_)| pine.overlay || line) {
+                if top+18.0 > plot.bottom() { break; }
+                let name = self.instances.iter().find(|i| i.id == *id).map_or("", |i| i.name.as_str());
+                let area = Rect::from_min_max(Pos2::new(plot.left()+8.0,top), Pos2::new(plot.right()-4.0,top+18.0));
+                scripts::paint_status(painter, area, pine, name, readout_at, self.appearance.price_format(), style);
+                top += 18.0;
+            }
+        }
+
+        if let Some(crosshair) = effective_crosshair.filter(|_| main_visible) {
             self.paint_dot(painter, plot, decor.chart_id, crosshair);
         }
 
