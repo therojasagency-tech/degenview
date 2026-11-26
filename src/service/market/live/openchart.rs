@@ -23,12 +23,14 @@ struct Event {
 
 pub(super) fn run(symbol: String, base: Timeframe, inbox: Arc<LiveInbox>, shutdown: Arc<AtomicBool>, ctx: egui::Context) {
     let Ok(interval) = resolution(base) else { return };
-    let Some(port) = std::env::var("DEGENVIEW_BRIDGE_PORT").ok().and_then(|v| v.parse::<u16>().ok()).filter(|p| *p != 0) else { return };
-    let Some(token) = std::env::var("DEGENVIEW_BRIDGE_TOKEN").ok().filter(|t| t.len() >= 32 && t.bytes().all(|b| b.is_ascii_graphic())) else { return };
-    let addr = SocketAddr::from(([127,0,0,1],port));
-    let url = format!("ws://127.0.0.1:{port}/v1/live?symbol={}&resolution={interval}", encode_component(&symbol));
     let mut backoff = Backoff::new();
     while !shutdown.load(Ordering::Acquire) {
+        let Ok((port, token)) = crate::service::market::openchart_manager::endpoint() else {
+            backoff.wait(&shutdown);
+            continue;
+        };
+        let addr = SocketAddr::from(([127,0,0,1],port));
+        let url = format!("ws://127.0.0.1:{port}/v1/live?symbol={}&resolution={interval}", encode_component(&symbol));
         if let Ok(mut request) = url.as_str().into_client_request() {
             if let Ok(header) = format!("Bearer {token}").parse() {
                 request.headers_mut().insert("authorization", header);

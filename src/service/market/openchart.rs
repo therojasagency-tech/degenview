@@ -42,16 +42,7 @@ pub(super) struct Bar {
 }
 
 fn get<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, ProviderError> {
-    let port = std::env::var("DEGENVIEW_BRIDGE_PORT")
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok())
-        .filter(|port| *port != 0);
-    let token = std::env::var("DEGENVIEW_BRIDGE_TOKEN")
-        .ok()
-        .filter(|token| token.len() >= 32 && token.bytes().all(|b| b.is_ascii_graphic()));
-    let (Some(port), Some(token)) = (port, token) else {
-        return Err(ProviderError::other("Start the local OpenChart bridge before opening its charts."));
-    };
+    let (port, token) = super::openchart_manager::endpoint()?;
     let url = format!("http://127.0.0.1:{port}{path}");
     let agent = ureq::Agent::new_with_config(
         config_builder_for(&url)

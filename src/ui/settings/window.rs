@@ -35,6 +35,7 @@ pub enum SettingsSection {
     PineStudio,
     Alpaca,
     Oanda,
+    OpenChart,
     Brokers,
     CoinMarketCap,
     Ai,
@@ -49,11 +50,12 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Appearance,
         Self::PineStudio,
         Self::Alpaca,
         Self::Oanda,
+        Self::OpenChart,
         Self::Brokers,
         Self::CoinMarketCap,
         Self::Ai,
@@ -80,6 +82,7 @@ impl SettingsSection {
             Self::PineStudio => tr!("Pine Studio"),
             Self::Alpaca => "Alpaca",
             Self::Oanda => "OANDA",
+            Self::OpenChart => "TradingView",
             Self::Brokers => tr!("Brokers"),
             Self::CoinMarketCap => "CoinMarketCap",
             Self::Ai => tr!("AI Assistant"),
@@ -101,6 +104,7 @@ impl SettingsSection {
             Self::PineStudio => Color32::from_rgb(172, 142, 104),
             Self::Alpaca => Color32::from_rgb(255, 159, 10),
             Self::Oanda => Color32::from_rgb(35, 160, 140),
+            Self::OpenChart => Color32::from_rgb(51, 102, 238),
             Self::Brokers => Color32::from_rgb(255, 112, 67),
             Self::CoinMarketCap => Color32::from_rgb(10, 132, 255),
             Self::Ai => Color32::from_rgb(255, 214, 10),
@@ -122,6 +126,7 @@ impl SettingsSection {
             Self::PineStudio => "pinestudio",
             Self::Alpaca => "alpaca",
             Self::Oanda => "oanda",
+            Self::OpenChart => "openchart",
             Self::Brokers => "brokers",
             Self::CoinMarketCap => "coinmarketcap",
             Self::Ai => "ai",
@@ -195,6 +200,7 @@ pub struct SettingsState {
     pub webhooks: WebhookSettingsState,
     pub api_keys: ApiKeysState,
     pub oanda: crate::ui::settings::oanda::OandaForm,
+    pub openchart: crate::ui::settings::openchart::OpenChartForm,
     pub brokers: crate::ui::settings::brokers::BrokersState,
     pub ai: crate::ui::settings::ai::AiSettingsState,
     pub network: crate::ui::settings::network::NetworkState,
@@ -353,6 +359,7 @@ impl SettingsSection {
             Self::PineStudio => Icon::AngleBrackets,
             Self::Alpaca => Icon::ChartLine,
             Self::Oanda => Icon::ChartLine,
+            Self::OpenChart => Icon::ChartLine,
             Self::Brokers => Icon::ArrowLeftRight,
             Self::CoinMarketCap => Icon::Gauge,
             Self::Ai => Icon::Sparkles,
@@ -475,6 +482,10 @@ pub fn show(
         SettingsSection::Oanda => {
             page_shell(&mut page, section, "Datos de mercado OANDA v20. Solo lectura.",
                 |ui| crate::ui::settings::oanda::body(ui, &mut state.oanda));
+        }
+        SettingsSection::OpenChart => {
+            page_shell(&mut page, section, "TradingView mediante el cliente original de OpenChart.",
+                |ui| crate::ui::settings::openchart::body(ui, &mut state.openchart));
         }
         SettingsSection::Brokers => {
             page_shell(

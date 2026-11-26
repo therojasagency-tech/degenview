@@ -23,3 +23,4 @@ pub(in crate::service) mod polymarket;
 pub mod retry;
 pub mod search_rank;
 pub mod trend;
+pub(crate) mod openchart_manager;

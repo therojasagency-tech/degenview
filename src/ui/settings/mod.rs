@@ -17,3 +17,4 @@ pub mod storage;
 pub mod sync;
 pub mod window;
 pub mod oanda;
+pub mod openchart;

@@ -33,7 +33,9 @@ if (import.meta.main) {
   }
   const app = process.env.DEGENVIEW_BRIDGE_APP ? resolve(process.env.DEGENVIEW_BRIDGE_APP) : undefined;
   if (app && !existsSync(app)) throw new Error("Build the DegenView app first.");
-  const token = app ? randomBytes(32).toString("hex") : process.env.DEGENVIEW_BRIDGE_TOKEN;
+  const managed = process.env.DEGENVIEW_BRIDGE_MANAGED === "1";
+  if (managed && app) throw new Error("Conflicting bridge launch modes.");
+  const token = app || managed ? randomBytes(32).toString("hex") : process.env.DEGENVIEW_BRIDGE_TOKEN;
   if (!token || token.length < 32) throw new Error("A local bridge token is required.");
   const login = process.env.DEGENVIEW_TV_LOGIN ?? "anonymous";
   if (login !== "anonymous" && login !== "browser") throw new Error("Invalid TradingView login mode.");
@@ -41,9 +43,17 @@ if (import.meta.main) {
   const server = await openChartServer(token, session ? {
     credential: () => Effect.succeed(session),
   } : {});
-  console.log(session ? "TradingView browser session connected." : "TradingView anonymous session selected.");
-  // The parent discovers the ephemeral port; credentials are never printed.
-  console.log(JSON.stringify({ version: 1, port: server.port }));
+  if (managed) {
+    // Only the private inherited stdout pipe carries the ephemeral loopback bearer.
+    console.log(JSON.stringify({version: 1, port: server.port, token}));
+    const retire = () => { server.stop(); process.exit(0); };
+    process.stdin.once("end", retire);
+    process.stdin.once("error", retire);
+    process.stdin.resume();
+  } else {
+    console.log(session ? "TradingView browser session connected." : "TradingView anonymous session selected.");
+    console.log(JSON.stringify({ version: 1, port: server.port }));
+  }
   const child = app ? Bun.spawn([app], {
     env: { ...process.env, DEGENVIEW_BRIDGE_PORT: String(server.port), DEGENVIEW_BRIDGE_TOKEN: token },
     stdin: "ignore", stdout: "inherit", stderr: "inherit",

@@ -61,6 +61,9 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 mkdir -p "$helper/Contents/MacOS" "$helper/Contents/Resources"
 cp target/release/degenview "$executable"
+# Ship the bridge source, not the user checkout, node_modules or secrets.
+mkdir -p "$app/Contents/Resources/data-bridge"
+cp tools/data-bridge/run-openchart.sh tools/data-bridge/adapter.mjs tools/data-bridge/openchart-entry.ts tools/data-bridge/browser-login.ts tools/data-bridge/browser-login-smoke.ts tools/data-bridge/native-smoke.ts tools/data-bridge/live-server.ts "$app/Contents/Resources/data-bridge/"
 cp target/release/degenview-alert-agent "$helper_executable"
 cp assets/brand/DegenView.icns "$app/Contents/Resources/DegenView.icns"
 # The fonts compiled into the app are under the SIL OFL, which wants its text and the copyright

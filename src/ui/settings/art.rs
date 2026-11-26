@@ -26,7 +26,7 @@ pub fn paint(ui: &Ui, rect: Rect, section: SettingsSection) {
     match section {
         SettingsSection::Appearance => art.appearance(),
         SettingsSection::PineStudio => art.pine_studio(),
-        SettingsSection::Alpaca | SettingsSection::Oanda => art.alpaca(),
+        SettingsSection::Alpaca | SettingsSection::Oanda | SettingsSection::OpenChart => art.alpaca(),
         SettingsSection::Brokers => art.brokers(),
         SettingsSection::CoinMarketCap => art.coinmarketcap(),
         SettingsSection::Ai => art.ai(),
