@@ -8,6 +8,7 @@ pub struct OpenChartForm {
     checkout: String,
     authorized: bool,
     authenticated: bool,
+    session_saved: bool,
     pending: Option<Pending<Result<(), String>>>,
     status: Option<(String, bool)>,
 }
@@ -20,11 +21,13 @@ pub fn body(ui: &mut egui::Ui, form: &mut OpenChartForm) {
         form.loaded = true;
         let saved = manager::saved_settings();
         form.authorized = saved.is_some();
+        form.session_saved = credentials::exists();
         form.authenticated = saved.as_ref().is_some_and(|s| s.authenticated);
         form.checkout = saved.map(|s| s.checkout).unwrap_or_else(manager::default_checkout).to_string_lossy().into_owned();
     }
     if let Some(answer) = form.pending.as_mut().and_then(|job| job.poll_or(|| Err("La conexión se interrumpió.".into()))) {
         form.pending = None;
+        form.session_saved = credentials::exists();
         if answer.is_ok() {
             form.authenticated = manager::saved_settings().is_some_and(|s| s.authenticated);
         }
@@ -53,10 +56,9 @@ pub fn body(ui: &mut egui::Ui, form: &mut OpenChartForm) {
             form.status = None;
             form.pending = Some(work_queue::start(Some(ui.ctx()), move || manager::connect_account(checkout)));
         }
-        if form.authenticated || credentials::exists() {
+        if form.authenticated || form.session_saved {
             if ui.button("Eliminar sesión guardada y usar modo anónimo").clicked() {
-                let checkout = PathBuf::from(form.checkout.trim());
-                form.pending = Some(work_queue::start(Some(ui.ctx()), move || manager::disconnect_account(checkout)));
+                form.pending = Some(work_queue::start(Some(ui.ctx()), manager::disconnect_account));
             }
         }
         if manager::saved_settings().is_some() && ui.button("Desactivar conexión automática").clicked() {

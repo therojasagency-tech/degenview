@@ -165,10 +165,13 @@ pub fn connect_account(checkout: PathBuf) -> Result<(), String> {
     save_settings(settings.checkout, true)
 }
 
-pub fn disconnect_account(checkout: PathBuf) -> Result<(), String> {
+pub fn disconnect_account() -> Result<(), String> {
     credentials::remove()?;
-    // Return to anonymous only after the user explicitly presses Disconnect.
-    save_settings(checkout, false)
+    // Do not re-enable a disabled provider or adopt an unconfirmed new checkout.
+    if let Some(settings) = saved_settings() {
+        save_settings(settings.checkout, false)?;
+    }
+    Ok(())
 }
 
 /// External launchers retain priority. The internal helper starts on the first market request,
