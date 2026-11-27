@@ -268,6 +268,7 @@ impl SeriesLine {
 pub struct ChartCard {
     appearance: ChartAppearance,
     calendar_marks: std::cell::RefCell<crate::model::chart::canvas::time_marks::CalendarMarks>,
+    market_clock: std::cell::Cell<crate::model::market::session::MarketClock>,
     /// Where the plot area was drawn at the last frame, in window points: what a snapshot is the
     /// size of, and what Select portion maps a selection from.
     body_rect: Rect,
@@ -422,6 +423,7 @@ impl Default for ChartCard {
         Self {
             appearance: ChartAppearance::default(),
             calendar_marks: Default::default(),
+            market_clock: Default::default(),
             body_rect: Rect::ZERO,
             axis_width: 0.0,
             top_inset: 0.0,

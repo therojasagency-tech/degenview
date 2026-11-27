@@ -40,12 +40,8 @@ pub(super) fn symbol_info(symbol: &str, source: DataSource, chart_type: ChartTyp
         ticker: symbol.to_owned(),
         ticker_id: format!("{}:{}", source.watchlist_slug(), symbol),
         currency: "USD".to_owned(),
-        kind: if source == DataSource::Alpaca {
-            "stock"
-        } else {
-            "crypto"
-        }
-        .to_owned(),
+        kind: crate::model::market::session::MarketClock::for_market(source, symbol)
+            .kind().to_owned(),
         base_currency: None,
         chart: chart_type.kind(),
         grid: crate::model::market::bucket::Grid::for_market(source, symbol),

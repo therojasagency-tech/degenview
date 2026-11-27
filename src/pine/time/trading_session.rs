@@ -15,7 +15,10 @@ struct Window {
 impl Window {
     fn contains(&self, minute: u32, weekday: u32) -> bool {
         if self.start == self.end {
-            return self.days.contains(&weekday);
+            let opening_day = if minute >= self.start || self.start == 0 {
+                weekday
+            } else if weekday == 1 { 7 } else { weekday - 1 };
+            return self.days.contains(&opening_day);
         }
         if self.start < self.end {
             return minute >= self.start && minute < self.end && self.days.contains(&weekday);
@@ -119,6 +122,20 @@ impl MarketSessions {
                 premarket: Some(parse("0400-0930:23456")),
                 postmarket: Some(parse("1600-2000:23456")),
             }
+        } else if kind == "forex" {
+            Self {
+                zone: "America/New_York",
+                regular: parse("1700-1700:12345"),
+                premarket: None,
+                postmarket: None,
+            }
+        } else if kind == "other" {
+            Self {
+                zone: "Etc/UTC",
+                regular: TradingSession { windows: Vec::new() },
+                premarket: None,
+                postmarket: None,
+            }
         } else {
             Self {
                 zone: "Etc/UTC",
@@ -156,6 +173,10 @@ impl MarketSessions {
     }
 
     fn same_day(&self, first: i64, second: i64) -> bool {
+        if self.zone == "America/New_York" && self.premarket.is_none() {
+            use crate::model::market::session::MarketClock;
+            return MarketClock::ForexNy17.trading_day(first) == MarketClock::ForexNy17.trading_day(second);
+        }
         let (a, b) = (self.local(first), self.local(second));
         (a.year, a.month, a.day) == (b.year, b.month, b.day)
     }

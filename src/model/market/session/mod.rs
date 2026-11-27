@@ -6,6 +6,7 @@
 //! would, 16:00.
 
 use crate::format::{civil_from_days, days_from_civil};
+use crate::model::DataSource;
 
 const HOUR_MS: i64 = 3_600_000;
 const DAY_MS: i64 = 86_400_000;
@@ -15,13 +16,97 @@ pub const OPEN_MS: i64 = 9 * HOUR_MS + HOUR_MS / 2;
 /// The session closes this far into the New York day: 16:00.
 pub const CLOSE_MS: i64 = 16 * HOUR_MS;
 
+/// A known market convention, resolved from provider AND venue-qualified ticker.
+/// Unknown is deliberately not a claim that the market trades 24/7.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum MarketClock {
+    CryptoUtc,
+    ForexNy17,
+    UsEquities,
+    #[default]
+    Unknown,
+}
+
+impl MarketClock {
+    pub fn for_market(source: DataSource, symbol: &str) -> Self {
+        use crate::model::market::forex::pip_size;
+        let venue = symbol.split_once(':').map(|(venue, _)| venue.to_ascii_uppercase());
+        match source {
+            DataSource::Alpaca => Self::UsEquities,
+            DataSource::Oanda if pip_size(source, symbol).is_some() => Self::ForexNy17,
+            DataSource::OpenChart => match venue.as_deref() {
+                Some("NASDAQ" | "NYSE" | "AMEX" | "NYSEARCA" | "CBOE" | "BATS") => Self::UsEquities,
+                Some("FOREXCOM" | "OANDA") if pip_size(source, symbol).is_some() => Self::ForexNy17,
+                Some("BINANCE" | "COINBASE" | "KRAKEN" | "BYBIT" | "OKX" | "BITSTAMP" | "GATEIO" | "MEXC") => Self::CryptoUtc,
+                _ => Self::Unknown,
+            },
+            DataSource::Binance | DataSource::Coinbase | DataSource::Okx | DataSource::Kraken
+            | DataSource::Bybit | DataSource::Gate | DataSource::Mexc | DataSource::CoinGecko
+            | DataSource::DexScreener => Self::CryptoUtc,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn zone(self) -> &'static str {
+        match self {
+            Self::ForexNy17 | Self::UsEquities => "America/New_York",
+            _ => "Etc/UTC",
+        }
+    }
+
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::CryptoUtc => "crypto",
+            Self::ForexNy17 => "forex",
+            Self::UsEquities => "stock",
+            Self::Unknown => "other",
+        }
+    }
+
+    pub fn offset_ms(self, utc_ms: i64) -> i64 {
+        match self {
+            Self::ForexNy17 | Self::UsEquities => eastern_offset_ms(utc_ms),
+            _ => 0,
+        }
+    }
+
+    /// Wall-clock time for display only; never change a candle or drawing timestamp.
+    pub fn display_ms(self, utc_ms: i64) -> i64 {
+        utc_ms + self.offset_ms(utc_ms)
+    }
+
+    /// UTC-midnight label of the trading date; FX evening belongs to the next date.
+    pub fn trading_day(self, utc_ms: i64) -> i64 {
+        let day = self.display_ms(utc_ms).div_euclid(DAY_MS);
+        if self == Self::ForexNy17 {
+            day + i64::from(utc_ms >= forex_boundary_ms(day))
+        } else { day }
+    }
+
+    /// A nominal session, not an authoritative holiday calendar.
+    pub fn is_regular(self, utc_ms: i64) -> bool {
+        match self {
+            Self::CryptoUtc => true,
+            Self::UsEquities => is_open(utc_ms),
+            Self::ForexNy17 => is_weekday(self.trading_day(utc_ms)),
+            Self::Unknown => false,
+        }
+    }
+}
+
 /// UTC offset of America/New_York at `t_ms`, in milliseconds: -5 h, or -4 h during US daylight
 /// time (02:00 local on the second Sunday of March to 02:00 on the first Sunday of November).
 pub fn eastern_offset_ms(t_ms: i64) -> i64 {
     let (year, ..) = civil_from_days(t_ms.div_euclid(DAY_MS));
     // The changes in UTC: 02:00 EST is 07:00 UTC in spring, 02:00 EDT is 06:00 UTC in autumn.
-    let spring = nth_sunday(year, 3, 2) * DAY_MS + 7 * HOUR_MS;
-    let autumn = nth_sunday(year, 11, 1) * DAY_MS + 6 * HOUR_MS;
+    let (spring_day, autumn_day) = if year >= 2007 {
+        (nth_sunday(year, 3, 2), nth_sunday(year, 11, 1))
+    } else {
+        let last_oct = days_from_civil(year, 11, 1) - 1;
+        (nth_sunday(year, 4, 1), last_oct - (last_oct + 4).rem_euclid(7))
+    };
+    let spring = spring_day * DAY_MS + 7 * HOUR_MS;
+    let autumn = autumn_day * DAY_MS + 6 * HOUR_MS;
     if (spring..autumn).contains(&t_ms) {
         -4 * HOUR_MS
     } else {
@@ -76,3 +161,28 @@ fn local_instant(day: i64, ms_of_day: i64) -> i64 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod market_clock_tests {
+    use super::*;
+    use crate::format::parse_timestamp;
+    fn ts(s: &str) -> i64 { parse_timestamp(s).unwrap() }
+    #[test]
+    fn resolves_qualified_markets_without_treating_cfds_as_equities() {
+        assert_eq!(MarketClock::for_market(DataSource::OpenChart, "OANDA:EURUSD"), MarketClock::ForexNy17);
+        assert_eq!(MarketClock::for_market(DataSource::OpenChart, "NASDAQ:AAPL"), MarketClock::UsEquities);
+        assert_eq!(MarketClock::for_market(DataSource::OpenChart, "CAPITALCOM:US100"), MarketClock::Unknown);
+        assert_eq!(MarketClock::for_market(DataSource::OpenChart, "BINANCE:BTCUSDT"), MarketClock::CryptoUtc);
+    }
+    #[test]
+    fn forex_trading_date_and_weekend_follow_new_york_not_utc() {
+        let clock = MarketClock::ForexNy17;
+        let friday = ts("2026-07-10 20:59");
+        assert!(clock.is_regular(friday));
+        assert!(!clock.is_regular(friday+60_000));
+        assert!(!clock.is_regular(ts("2026-11-29 21:59")));
+        assert!(clock.is_regular(ts("2026-11-29 22:00")));
+        assert_eq!(clock.trading_day(ts("2026-11-29 22:00"))*DAY_MS, ts("2026-11-30"));
+        assert_eq!(clock.offset_ms(ts("2006-03-20 12:00")), -5*HOUR_MS);
+    }
+}

@@ -94,7 +94,13 @@ impl CalendarMarks {
     }
 
     pub fn select(&mut self,bars: &[Kline],spacing: usize,visible: Range<usize>) -> &[Mark] {
-        self.refresh_times(bars.iter().map(|bar| bar.open_time));
+        self.select_with(bars, spacing, visible, |time| time)
+    }
+
+    /// Use the market's wall clock for labels, leaving bar positions and UTC stamps intact.
+    pub fn select_with(&mut self,bars: &[Kline],spacing: usize,visible: Range<usize>,
+        display: impl Fn(i64) -> i64 + Clone) -> &[Mark] {
+        self.refresh_times(bars.iter().map(|bar| display(bar.open_time)));
         self.rebuild(spacing);
         let start = self.selected.partition_point(|mark| mark.index < visible.start);
         let end = self.selected.partition_point(|mark| mark.index < visible.end).max(start);

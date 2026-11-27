@@ -196,7 +196,7 @@ impl Session {
                 ))))
             }
             // `hour(time, timezone)` and the other calendar parts: of `time` (the bar's own when
-            // there are no arguments), read in `timezone` (UTC when omitted).
+            // there are no arguments), read in `timezone` (market zone when omitted).
             _ if crate::pine::time::PART_NAMES.contains(&name) => {
                 let bound = self.bind_named(arguments, &["time", "timezone"], context)?;
                 let stamp = if arguments.is_empty() {
@@ -206,7 +206,7 @@ impl Session {
                 };
                 let zone = match bound.get("timezone") {
                     Some(RuntimeValue::String(zone)) => Some(zone.as_str()),
-                    _ => None,
+                    _ => Some(crate::pine::time::trading_session::MarketSessions::for_kind(&self.symbol.kind).zone()),
                 };
                 let offset = crate::pine::time::zone_offset_secs(zone, stamp.unwrap_or_default());
                 Ok(Some(match stamp {
@@ -216,7 +216,7 @@ impl Session {
             }
             // `time(timeframe, session, timezone)`: the open time of the `timeframe` bar that
             // contains the current bar. With a `session` it is `na` unless that bar opens inside
-            // the session, read in `timezone` (UTC when omitted). Without a usable timeframe it is
+            // the session, read in `timezone` (market zone when omitted). Without a usable timeframe it is
             // the bar's own `time`.
             "time" => {
                 let bound =
@@ -248,7 +248,7 @@ impl Session {
                     };
                     let zone = match bound.get("timezone") {
                         Some(RuntimeValue::String(zone)) => Some(zone.as_str()),
-                        _ => None,
+                        _ => Some(crate::pine::time::trading_session::MarketSessions::for_kind(&self.symbol.kind).zone()),
                     };
                     let offset = crate::pine::time::zone_offset_secs(zone, start);
                     if !session.contains(&crate::pine::time::components(start, offset)) {

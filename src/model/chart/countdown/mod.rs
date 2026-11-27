@@ -77,8 +77,8 @@ pub fn provider_eligible(chart_type: ChartType, source: DataSource, symbol: &str
 }
 
 fn us_equity(symbol: &str) -> bool {
-    symbol.split_once(':').is_some_and(|(venue,_)|
-        matches!(venue.to_ascii_uppercase().as_str(),"NASDAQ"|"NYSE"|"AMEX"|"NYSEARCA"))
+    crate::model::market::session::MarketClock::for_market(DataSource::OpenChart, symbol)
+        == crate::model::market::session::MarketClock::UsEquities
 }
 
 impl Countdown {

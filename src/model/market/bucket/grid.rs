@@ -32,6 +32,12 @@ pub enum Grid {
 impl Grid {
     /// Only known FX session conventions; never assign every market on TradingView one grid.
     pub fn for_market(source: DataSource, symbol: &str) -> Self {
+        use crate::model::market::session::MarketClock;
+        match MarketClock::for_market(source, symbol) {
+            MarketClock::UsEquities => return Self::UsEquities,
+            MarketClock::ForexNy17 => return Self::ForexNy17,
+            _ => {}
+        }
         let pair = match source {
             DataSource::Oanda => symbol.replace('_', ""),
             DataSource::OpenChart => match symbol.split_once(':') {

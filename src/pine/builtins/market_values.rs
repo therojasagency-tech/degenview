@@ -36,7 +36,10 @@ pub struct MarketContext<'a> {
 pub fn read(name: &str, context: &MarketContext) -> Option<RuntimeValue> {
     match name {
         "time_tradingday" => Some(RuntimeValue::Int(
-            context.bar.open_time.div_euclid(MILLIS_PER_DAY) * MILLIS_PER_DAY,
+            if context.symbol.kind == "forex" {
+                crate::model::market::session::MarketClock::ForexNy17
+                    .trading_day(context.bar.open_time) * MILLIS_PER_DAY
+            } else { context.bar.open_time.div_euclid(MILLIS_PER_DAY) * MILLIS_PER_DAY },
         )),
         "timenow" => Some(RuntimeValue::Int(now_ms())),
         "ta.tr" => Some(
