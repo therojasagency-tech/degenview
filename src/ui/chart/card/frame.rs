@@ -240,7 +240,7 @@ impl ChartCard {
             // and goes with the connection.
             if let Some(timeframe) = self
                 .timeframe
-                .filter(|_| style.bar_countdown && countdown::eligible(chart_type, data.source))
+                .filter(|tf| style.bar_countdown && (countdown::eligible(chart_type, data.source) || countdown::provider_eligible(chart_type,data.source,data.symbol,*tf)))
             {
                 for text in countdown::widest_texts(timeframe) {
                     widest = widest.max(

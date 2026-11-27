@@ -104,7 +104,7 @@ pub(super) fn decode_bar(bar: Bar, tf: Timeframe) -> Result<Kline, ProviderError
             return Err(ProviderError::data("Invalid OpenChart candle"));
         }
         // The bridge supplies the exact open time but no close time. Use a nominal display
-        // duration until per-symbol session metadata is available; countdowns are disabled.
+        // duration; supported FX and regular equity countdowns validate the current session separately.
         let close_time = if tf.unit() == TimeUnit::Month {
             let offset = bar.time.rem_euclid(86_400_000);
             crate::model::market::bucket::next_bucket_start_ms(tf, bar.time) + offset - 1

@@ -65,7 +65,58 @@ pub struct Countdown {
     pub remaining_ms: i64,
 }
 
+/// Additional providers use native candle openings, not the UTC bucket grid.
+pub fn provider_eligible(chart_type: ChartType, source: DataSource, symbol: &str, timeframe: Timeframe) -> bool {
+    use crate::model::market::forex::pip_size;
+    if !chart_type.is_time_based() { return false; }
+    if pip_size(source,symbol).is_some() {
+        return timeframe.nominal_ms() <= 12*HOUR_MS || timeframe == Timeframe::DAY_1;
+    }
+    // Regular US equities only: no guesses for arbitrary indices, CFDs or futures.
+    source == DataSource::OpenChart && us_equity(symbol) && timeframe.nominal_ms() <= 30*MINUTE_MS
+}
+
+fn us_equity(symbol: &str) -> bool {
+    symbol.split_once(':').is_some_and(|(venue,_)|
+        matches!(venue.to_ascii_uppercase().as_str(),"NASDAQ"|"NYSE"|"AMEX"|"NYSEARCA"))
+}
+
 impl Countdown {
+    /// Native session candles have an exact opening stamp but an estimated closing
+    /// stamp. Only count down while the latest actual candle is still in its supported
+    /// interval; never synthesize a new countdown on an old/closed/delayed feed.
+    pub fn resolve_provider(input: &CountdownInput, symbol: &str) -> Option<Self> {
+        use crate::model::market::{forex::pip_size,session};
+        if input.replay || !provider_eligible(input.chart_type,input.source,symbol,input.timeframe) { return None; }
+        if input.data_age_ms?.abs() > input.refresh_ms.saturating_mul(STALE_AFTER_REFRESHES) { return None; }
+        let bar = input.newest?;
+        let now = input.now_ms;
+        let open = bar.open_time;
+        let nominal = input.timeframe.nominal_ms();
+        if now < open { return None; }
+        let close = if pip_size(input.source,symbol).is_some() {
+            let day = session::local_day(now);
+            let weekday = (day+3).rem_euclid(7); // Mon=0, Fri=4, Sun=6
+            let boundary = session::forex_boundary_ms(day);
+            if weekday == 5 || (weekday == 4 && now >= boundary) || (weekday == 6 && now < boundary) { return None; }
+            let friday = day + (4-weekday).rem_euclid(7);
+            let week_close = session::forex_boundary_ms(friday);
+            if input.timeframe == Timeframe::DAY_1 {
+                let start_day = session::local_day(open);
+                if (open-session::forex_boundary_ms(start_day)).abs() > CLOSE_TOLERANCE_MS { return None; }
+                session::forex_boundary_ms(start_day+1).min(week_close)
+            } else {
+                open.checked_add(nominal)?.min(week_close)
+            }
+        } else {
+            let day = session::local_day(now);
+            if !session::is_open(now) || open < session::open_ms(day) { return None; }
+            open.checked_add(nominal)?.min(session::close_ms(day))
+        };
+        if now >= close { return None; }
+        Some(Self { close_ms: close, remaining_ms: (close-now).min(close-open-1).max(0) })
+    }
+
     /// The countdown to show, or `None` when it would mislead: a chart type or source without
     /// clock-cut bars, a replay, nothing loaded, data that stopped arriving, a provider whose
     /// candles are not on the grid.
@@ -159,5 +210,47 @@ pub fn widest_texts(timeframe: Timeframe) -> Vec<String> {
         vec![format(DAY_MS - 1)]
     } else {
         vec![format(HOUR_MS - 1)]
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::*;
+    use crate::format::parse_timestamp;
+    fn ts(s: &str)->i64 { parse_timestamp(s).unwrap() }
+    fn bar(open: i64,tf:Timeframe)->Kline { Kline { open_time:open, close_time:open+tf.nominal_ms()-1, open:1.1,high:1.1,low:1.1,close:1.1,volume:0.0 } }
+    fn input(source:DataSource,tf:Timeframe,b:&Kline,now:i64)->CountdownInput<'_> {
+        CountdownInput { chart_type:ChartType::Candles,source,timeframe:tf,newest:Some(b),now_ms:now,data_age_ms:Some(0),refresh_ms:5000,replay:false }
+    }
+    #[test]
+    fn forex_intraday_counts_only_a_current_native_bar() {
+        let open=ts("2026-11-27 13:00");
+        let b=bar(open,Timeframe::MINUTE_15);
+        for (source,symbol) in [(DataSource::OpenChart,"PEPPERSTONE:EURUSD"),(DataSource::Oanda,"EUR_USD")] {
+            let mut i=input(source,Timeframe::MINUTE_15,&b,open+600_000);
+            assert_eq!(Countdown::resolve_provider(&i,symbol).unwrap().remaining_ms,300_000);
+            i.now_ms=open+900_000;
+            assert!(Countdown::resolve_provider(&i,symbol).is_none());
+        }
+    }
+    #[test]
+    fn forex_friday_close_and_sunday_open_respect_new_york_dst() {
+        let b=bar(ts("2026-07-10 20:30"),Timeframe::HOUR_1);
+        let mut i=input(DataSource::Oanda,Timeframe::HOUR_1,&b,ts("2026-07-10 20:45"));
+        assert_eq!(Countdown::resolve_provider(&i,"USD_JPY").unwrap().close_ms,ts("2026-07-10 21:00"));
+        i.now_ms=ts("2026-07-10 21:01");
+        assert!(Countdown::resolve_provider(&i,"USD_JPY").is_none());
+        let b=bar(ts("2026-11-29 22:00"),Timeframe::DAY_1);
+        let i=input(DataSource::Oanda,Timeframe::DAY_1,&b,ts("2026-11-29 22:15"));
+        assert_eq!(Countdown::resolve_provider(&i,"EUR_USD").unwrap().close_ms,ts("2026-11-30 22:00"));
+    }
+    #[test]
+    fn stock_countdown_needs_current_regular_session_and_fresh_data() {
+        let b=bar(ts("2026-11-25 15:00"),Timeframe::MINUTE_15);
+        let mut i=input(DataSource::OpenChart,Timeframe::MINUTE_15,&b,ts("2026-11-25 15:10"));
+        assert_eq!(Countdown::resolve_provider(&i,"NASDAQ:AAPL").unwrap().remaining_ms,300_000);
+        i.data_age_ms=Some(20_000);
+        assert!(Countdown::resolve_provider(&i,"NASDAQ:AAPL").is_none());
+        assert!(!provider_eligible(ChartType::Candles,DataSource::OpenChart,"CAPITALCOM:DXY",Timeframe::MINUTE_15));
     }
 }

@@ -3,6 +3,7 @@
 pub mod bucket;
 pub mod cmc;
 pub mod feed;
+pub mod forex;
 pub mod history;
 pub(in crate::model) mod instrument;
 pub(in crate::model) mod kline;

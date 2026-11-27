@@ -160,7 +160,7 @@ fn decode(data: History, symbol: &str, gran: &str, tf: Timeframe) -> Result<Vec<
         };
         let (open, high, low, close) = (price(&c.mid.o)?, price(&c.mid.h)?, price(&c.mid.l)?, price(&c.mid.c)?);
         if high < open.max(close) || low > open.min(close) { return Err(ProviderError::data("Invalid OANDA OHLC")); }
-        // The opening timestamp is exact. Session close metadata is not yet wired to the chart.
+        // The opening timestamp is exact. Supported FX countdowns validate the session separately.
         let close_time = if tf.unit() == TimeUnit::Month {
             crate::model::market::bucket::next_bucket_start_ms(tf, open_time) + open_time.rem_euclid(86_400_000) - 1
         } else { open_time + tf.nominal_ms() - 1 };

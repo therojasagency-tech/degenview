@@ -458,7 +458,7 @@ impl Chart {
         if !appearance.canvas.bar_countdown || self.data_timeframe != Some(timeframe) {
             return None;
         }
-        Countdown::resolve(&CountdownInput {
+        let input = CountdownInput {
             chart_type: appearance.style.effective_type(self.source),
             source: self.source,
             timeframe,
@@ -467,7 +467,10 @@ impl Chart {
             data_age_ms: self.last_data_ms.map(|at| now_ms - at),
             refresh_ms: self.refresh_cadence().as_millis() as i64,
             replay,
-        })
+        };
+        if matches!(self.source, DataSource::OpenChart | DataSource::Oanda) {
+            Countdown::resolve_provider(&input,&self.symbol)
+        } else { Countdown::resolve(&input) }
     }
 
     /// Forgets what the live feed delivered: the candles are another market's or timeframe's.
