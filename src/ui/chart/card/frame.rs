@@ -387,6 +387,13 @@ impl ChartCard {
         let time_labels = self.calendar_labels(painter, bars, view.start..view.end, &x_for, plot, slot_width, style);
         let tick_xs: Vec<f32> = time_labels.iter().map(|label| label.x).collect();
         self.draw_grid(&main_painter, plot, rect, scale, style, &tick_xs);
+        // Session boundaries use UTC market stamps, not the locally formatted time axis.
+        let period_marks = self.period_marks(data, view, &x_for, plot);
+        if main_visible {
+            for &(x, label, ink) in &period_marks {
+                paint_period_mark(&main_painter, plot, x, label, ink, style);
+            }
+        }
         let axis_plot = Rect::from_min_max(plot.min, Pos2::new(plot.right(), (full_rect.bottom()-style.time_axis_height()).max(plot.top())));
         canvas::paint_scale_lines(
             painter,
@@ -600,6 +607,12 @@ impl ChartCard {
                     pointer,
                 );
                 tooltip = tooltip.or(pane_tooltip);
+                for &(x, _, ink) in &period_marks {
+                    canvas::vertical(&painter.with_clip_rect(geometry.plot), x,
+                        (geometry.plot.top(),geometry.plot.bottom()),
+                        canvas::LineStyle { stroke: Stroke::new(1.0,ink),
+                            dash: crate::model::chart::kind::LineDash::Dotted });
+                }
                 let mut tags = if !drawing.hide_all {
                     self.pane_drawings.paint(painter, data, view, &geometry, *id, pine, self.timeframe, &self.instances, drawing)
                 } else { Vec::new() };
@@ -748,4 +761,36 @@ impl ChartCard {
             overlays.finish(data, layout, view, &overlay_frame);
         }
     }
+}
+
+impl ChartCard {
+    fn period_marks(&self, data: &FrameData, view: &View, x_for: &dyn Fn(usize)->f32,
+        plot: Rect) -> Vec<(f32,&'static str,Color32)> {
+        use crate::model::market::session::{MarketClock,PeriodBoundary,period_boundary};
+        let Some(tf) = self.timeframe else { return Vec::new(); };
+        if !data.chart_type.is_time_based() { return Vec::new(); }
+        let clock = MarketClock::for_market(data.source,data.symbol);
+        let cfg = &self.appearance.canvas;
+        let mut marks = Vec::new();
+        for i in view.start.max(1)..view.end {
+            let Some(kind) = period_boundary(clock,data.bars[i-1].open_time,data.bars[i].open_time,
+                tf,cfg.period_day,cfg.period_week,cfg.period_month) else { continue; };
+            let x = x_for(i-view.start);
+            if !plot.x_range().contains(x) { continue; }
+            let (label,ink) = match kind {
+                PeriodBoundary::Day => ("D",Color32::from_rgb(145,151,160)),
+                PeriodBoundary::Week => ("W",Color32::from_rgb(75,151,240)),
+                PeriodBoundary::Month => ("M",Color32::from_rgb(218,166,55)),
+            };
+            marks.push((x,label,ink));
+        }
+        marks
+    }
+}
+fn paint_period_mark(painter: &egui::Painter, plot: Rect, x: f32, label: &str, ink: Color32, style: &CanvasStyle) {
+    let painter = painter.with_clip_rect(plot);
+    canvas::vertical(&painter,x,(plot.top(),plot.bottom()),
+        canvas::LineStyle { stroke: Stroke::new(1.0,ink),
+            dash: crate::model::chart::kind::LineDash::Dotted });
+    painter.text(Pos2::new(x+3.0,plot.bottom()-4.0),Align2::LEFT_BOTTOM,label,style.time_font(),ink);
 }

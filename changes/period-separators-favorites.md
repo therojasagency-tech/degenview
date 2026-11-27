@@ -1,0 +1,1 @@
+Add configurable D/W/M trading-period separators using the known market's trading date and first observed bar, independent of display time. Add a scrollable workspace timeframe list with favorites, persisted using the existing pinned settings and shown as direct toolbar shortcuts. Unknown market calendars do not receive guessed separators; tick-count charts remain unsupported.

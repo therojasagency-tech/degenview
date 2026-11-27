@@ -320,3 +320,79 @@ fn footer(ui: &mut Ui) {
     let row = rect.with_min_x(rect.left() + HEADING_INSET);
     hint_row(ui, row, footer_hints(), FOOTER_TEXT, &[tr!("move")]);
 }
+
+/// Workspace-only list presentation. Pine Studio keeps its compact picker.
+pub enum WorkspacePick {
+    Chart(Timeframe),
+    ChartAndPin(Timeframe),
+    Favorite(Timeframe),
+    Unpin(Timeframe),
+}
+
+pub fn show_workspace(ui: &Ui, button: &Response, input: &TimeframePickerInput) -> Option<WorkspacePick> {
+    let popup_id = egui::Popup::default_response_id(button);
+    let state_id = popup_id.with("workspace-timeframes");
+    if !egui::Popup::is_id_open(ui.ctx(),popup_id) {
+        ui.data_mut(|data| data.remove::<State>(state_id));
+        if !button.clicked() { return None; }
+    }
+    let mut state = ui.data(|data| data.get_temp::<State>(state_id)).unwrap_or_default();
+    // More common intervals in the workspace list; custom intervals remain available.
+    let mut all = input.pinned.to_vec();
+    for text in ["5s","10s","2m","3m","10m","45m","2h","3h","6h","2D","3M","6M"] {
+        if let Ok(tf) = Timeframe::parse(text) { all.push(tf); }
+    }
+    let grid = Grid::new(&all);
+    let pick = egui::Popup::menu(button).frame(menu_frame())
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .align(egui::RectAlign::BOTTOM_START).gap(4.0).width(248.0)
+        .show(|ui| {
+            menu_scope(ui,0.0);
+            ui.set_width(236.0);
+            let keys = Keys::read(ui.ctx(),state.query.is_empty());
+            if let Some(step) = keys.step
+                && let Some(from) = state.highlighted(input.current)
+                && let Some(to) = grid.step(from,step) { state.moved = Some(to); }
+            let field = compact_search_box(ui,Icon::Clock,&mut state.query,false,
+                tr!("Add custom interval…"),state_id.with("field"),!state.focused_once);
+            state.focused_once = true;
+            if field.cleared { state.query.clear(); }
+            if field.changed || field.cleared { state.moved = None; }
+            let highlighted = state.highlighted(input.current);
+            let mut pick = None;
+            if let Typed::Valid(tf) = Typed::read(&state.query) {
+                if typed_row(ui,tf,true) { pick = Some(WorkspacePick::Chart(tf)); }
+            } else if let Typed::Invalid(error) = Typed::read(&state.query) { note(ui,&error.to_string()); }
+            menu_separator(ui);
+            egui::ScrollArea::vertical().max_height(400.0).auto_shrink([false,true]).show(ui,|ui| {
+                for (section,tfs) in grid.sections() {
+                    menu_heading(ui,title(*section));
+                    for &tf in tfs {
+                        ui.push_id(tf.label(), |ui| {
+                            ui.horizontal(|ui| {
+                                let favorite = input.pinned.contains(&tf);
+                                let row = egui::Button::new(tf.description()).selected(tf == input.current);
+                                if ui.add_sized([190.0,26.0],row).clicked() {
+                                    pick = Some(WorkspacePick::Chart(tf));
+                                }
+                                if ui.add_sized([28.0,26.0],egui::Button::new(if favorite {"★"} else {"☆"}))
+                                    .on_hover_text(if favorite {tr!("Remove from favorites")} else {tr!("Add to favorites")}).clicked() {
+                                    pick = Some(if favorite {WorkspacePick::Unpin(tf)} else {WorkspacePick::Favorite(tf)});
+                                }
+                            });
+                        });
+                    }
+                    menu_separator(ui);
+                }
+            });
+            if let Some(warning) = highlighted.and_then(|tf| warning::cannot_chart(input.sources,tf)) { note(ui,&warning); }
+            if let Some(tf) = highlighted {
+                if keys.pin { pick = Some(WorkspacePick::ChartAndPin(tf)); }
+                else if keys.chart { pick = Some(WorkspacePick::Chart(tf)); }
+            }
+            if keys.close || matches!(pick.as_ref(),Some(WorkspacePick::Chart(_) | WorkspacePick::ChartAndPin(_))) { ui.close(); }
+            pick
+        }).and_then(|shown| shown.inner);
+    ui.data_mut(|data| data.insert_temp(state_id,state));
+    pick
+}

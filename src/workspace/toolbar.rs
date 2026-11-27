@@ -104,6 +104,7 @@ impl ChartWorkspace {
                     self.pin_timeframe(timeframe);
                     self.set_timeframe(timeframe, ctx);
                 }
+                ToolbarAction::FavoriteTimeframe(timeframe) => self.pin_timeframe(timeframe),
                 ToolbarAction::UnpinTimeframe(timeframe) => self.unpin_timeframe(timeframe),
                 ToolbarAction::OpenSymbolSearch => self.open_symbol_picker(),
                 ToolbarAction::SaveLayout => save_clicked = true,
@@ -247,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn pinning_and_unpinning_change_the_shared_list_and_presets_never_join_it() {
+    fn pinning_and_unpinning_change_the_shared_favorites_list() {
         use crate::model::{TimeUnit, Timeframe};
         let workspace = empty_workspace(1);
         let pinned = |workspace: &super::ChartWorkspace| {
@@ -256,9 +257,9 @@ mod tests {
         let custom = Timeframe::new(22, TimeUnit::Minute).unwrap();
         workspace.pin_timeframe(custom);
         workspace.pin_timeframe(Timeframe::HOUR_4);
-        assert_eq!(*pinned(&workspace), [custom]);
+        assert_eq!(*pinned(&workspace), [custom,Timeframe::HOUR_4]);
         workspace.unpin_timeframe(custom);
-        assert!(pinned(&workspace).is_empty());
+        assert_eq!(*pinned(&workspace), [Timeframe::HOUR_4]);
     }
 
     #[test]

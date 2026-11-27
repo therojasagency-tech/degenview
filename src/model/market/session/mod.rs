@@ -94,6 +94,38 @@ impl MarketClock {
     }
 }
 
+/// Which trading period starts between two observed bars. Month takes precedence
+/// over week, then day, only among the enabled and meaningful periods.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PeriodBoundary { Day, Week, Month }
+
+pub fn period_boundary(clock: MarketClock, previous: i64, current: i64,
+    timeframe: crate::model::Timeframe, daily: bool, weekly: bool, monthly: bool)
+    -> Option<PeriodBoundary>
+{
+    use crate::model::TimeUnit;
+    if clock == MarketClock::Unknown || current <= previous { return None; }
+    let day = |stamp: i64| {
+        // Native daily bars may be date labels at UTC midnight, not actual session opens.
+        if !timeframe.is_intraday() && stamp.rem_euclid(DAY_MS) == 0 {
+            stamp.div_euclid(DAY_MS)
+        } else { clock.trading_day(stamp) }
+    };
+    let (a,b) = (day(previous),day(current));
+    if b <= a { return None; }
+    let (ay,am,_) = civil_from_days(a);
+    let (by,bm,_) = civil_from_days(b);
+    if monthly && timeframe.unit() != TimeUnit::Month && (ay,am) != (by,bm) {
+        return Some(PeriodBoundary::Month);
+    }
+    if weekly && matches!(timeframe.unit(), TimeUnit::Second | TimeUnit::Minute | TimeUnit::Hour | TimeUnit::Day)
+        && (a+3).div_euclid(7) != (b+3).div_euclid(7) {
+        return Some(PeriodBoundary::Week);
+    }
+    if daily && timeframe.is_intraday() { return Some(PeriodBoundary::Day); }
+    None
+}
+
 /// UTC offset of America/New_York at `t_ms`, in milliseconds: -5 h, or -4 h during US daylight
 /// time (02:00 local on the second Sunday of March to 02:00 on the first Sunday of November).
 pub fn eastern_offset_ms(t_ms: i64) -> i64 {
@@ -184,5 +216,30 @@ mod market_clock_tests {
         assert!(clock.is_regular(ts("2026-11-29 22:00")));
         assert_eq!(clock.trading_day(ts("2026-11-29 22:00"))*DAY_MS, ts("2026-11-30"));
         assert_eq!(clock.offset_ms(ts("2006-03-20 12:00")), -5*HOUR_MS);
+    }
+}
+
+#[cfg(test)]
+mod period_boundary_tests {
+    use super::*;
+    use crate::model::Timeframe;
+    use crate::format::parse_timestamp;
+    fn ts(s: &str) -> i64 { parse_timestamp(s).unwrap() }
+    #[test]
+    fn forex_daily_boundary_is_at_rollover_not_midnight() {
+        let mark = |a,b| period_boundary(MarketClock::ForexNy17, ts(a), ts(b),
+            Timeframe::MINUTE_15,true,true,true);
+        assert_eq!(mark("2026-11-26 21:45","2026-11-26 22:00"),Some(PeriodBoundary::Day));
+        assert_eq!(mark("2026-11-26 23:45","2026-11-27 00:00"),None);
+        assert_eq!(mark("2026-11-27 21:45","2026-11-29 22:00"),Some(PeriodBoundary::Week));
+        assert_eq!(mark("2026-11-30 21:45","2026-11-30 22:00"),Some(PeriodBoundary::Month));
+        assert_eq!(mark("2026-07-07 20:45","2026-07-07 21:00"),Some(PeriodBoundary::Day));
+    }
+    #[test]
+    fn daily_native_labels_do_not_move_to_previous_date() {
+        assert_eq!(period_boundary(MarketClock::UsEquities,ts("2026-11-27"),ts("2026-11-30"),
+            Timeframe::DAY_1,true,true,true),Some(PeriodBoundary::Week));
+        assert_eq!(period_boundary(MarketClock::Unknown,ts("2026-11-27"),ts("2026-11-30"),
+            Timeframe::MINUTE_15,true,true,true),None);
     }
 }

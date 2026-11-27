@@ -329,6 +329,10 @@ pub struct ChartCanvas {
     pub vertical_grid: LineAppearance,
     pub horizontal_grid: LineAppearance,
     pub pane_separator: LineAppearance,
+    /// Trading-period boundaries, independent of the viewer's local clock.
+    pub period_day: bool,
+    pub period_week: bool,
+    pub period_month: bool,
     pub crosshair: LineAppearance,
     pub watermark: WatermarkAppearance,
     pub scales: ScaleAppearance,
@@ -357,6 +361,9 @@ impl Default for ChartCanvas {
             vertical_grid: LineAppearance::default(),
             horizontal_grid: LineAppearance::default(),
             pane_separator: LineAppearance::default(),
+            period_day: true,
+            period_week: true,
+            period_month: true,
             // TradingView draws its crosshair dashed.
             crosshair: LineAppearance::new(LineDash::Dashed),
             watermark: WatermarkAppearance::default(),

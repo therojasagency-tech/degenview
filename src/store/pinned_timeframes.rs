@@ -1,6 +1,6 @@
 //! The custom timeframes pinned in the timeframe picker (`kit::timeframe_picker`), kept as one
 //! `setting` holding their labels. The list is shared by every chart tab and Pine Studio. The
-//! presets are always listed and are never pinned.
+//! presets are always listed and may also be favorited for toolbar shortcuts.
 
 use super::Store;
 use crate::model::Timeframe;
@@ -10,7 +10,7 @@ pub const KEY: &str = "timeframePicker.pinned";
 
 impl Store {
     /// The pinned timeframes in the order they were pinned. A label this build cannot read, a
-    /// preset and a repeat are dropped.
+    /// repeat is dropped.
     pub fn pinned_timeframes(&self) -> Vec<Timeframe> {
         let labels = self.setting::<Vec<String>>(KEY).unwrap_or_default();
         let mut pinned: Vec<Timeframe> = Vec::new();
@@ -18,17 +18,17 @@ impl Store {
             .iter()
             .filter_map(|label| Timeframe::parse(label).ok())
         {
-            if !Timeframe::PRESETS.contains(&timeframe) && !pinned.contains(&timeframe) {
+            if !pinned.contains(&timeframe) {
                 pinned.push(timeframe);
             }
         }
         pinned
     }
 
-    /// Pins `timeframe`; a preset or one already pinned changes nothing.
+    /// Pins `timeframe`; one already pinned changes nothing.
     pub fn pin_timeframe(&self, timeframe: Timeframe) -> rusqlite::Result<()> {
         let mut pinned = self.pinned_timeframes();
-        if Timeframe::PRESETS.contains(&timeframe) || pinned.contains(&timeframe) {
+        if pinned.contains(&timeframe) {
             return Ok(());
         }
         pinned.push(timeframe);
@@ -78,12 +78,12 @@ mod tests {
     }
 
     #[test]
-    fn presets_and_repeats_are_not_pinned() {
+    fn presets_can_be_favorites_and_repeats_are_not_pinned() {
         let store = Store::open_in_memory().expect("open");
         store.pin_timeframe(Timeframe::HOUR_1).unwrap();
         store.pin_timeframe(custom(22, TimeUnit::Minute)).unwrap();
         store.pin_timeframe(custom(22, TimeUnit::Minute)).unwrap();
-        assert_eq!(store.pinned_timeframes(), [custom(22, TimeUnit::Minute)]);
+        assert_eq!(store.pinned_timeframes(), [Timeframe::HOUR_1, custom(22, TimeUnit::Minute)]);
     }
 
     #[test]
@@ -108,7 +108,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             store.pinned_timeframes(),
-            [custom(22, TimeUnit::Minute), custom(3, TimeUnit::Hour)]
+            [custom(22, TimeUnit::Minute), Timeframe::HOUR_1, custom(3, TimeUnit::Hour)]
         );
     }
 

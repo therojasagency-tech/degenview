@@ -10,7 +10,7 @@ use crate::model::{ChartType, DataSource, Timeframe};
 use crate::ui::chart::type_menu;
 use crate::ui::icons::{self, Icon};
 use crate::ui::kit::bar::{self, Glyph};
-use crate::ui::kit::timeframe_picker::{self, TimeframePick};
+use crate::ui::kit::timeframe_picker::{self, WorkspacePick};
 use crate::ui::kit::{self, BOLD, REGULAR, SEMIBOLD, size};
 use crate::ui::shortcut;
 use crate::ui::theme;
@@ -77,6 +77,7 @@ pub enum ToolbarAction {
     SetTimeframe(Timeframe),
     /// Chart this timeframe and keep it among the picker's chips.
     PinTimeframe(Timeframe),
+    FavoriteTimeframe(Timeframe),
     UnpinTimeframe(Timeframe),
     /// Open the symbol picker, to change the focused chart's market.
     OpenSymbolSearch,
@@ -157,14 +158,17 @@ pub fn show(ui: &mut Ui, input: &ToolbarInput) -> Vec<ToolbarAction> {
                     pinned: input.pinned,
                     sources: input.sources,
                 };
-                match timeframe_picker::show(ui, response, &picker) {
-                    Some(TimeframePick::Chart(timeframe)) => {
+                match timeframe_picker::show_workspace(ui, response, &picker) {
+                    Some(WorkspacePick::Chart(timeframe)) => {
                         actions.push(ToolbarAction::SetTimeframe(timeframe));
                     }
-                    Some(TimeframePick::ChartAndPin(timeframe)) => {
+                    Some(WorkspacePick::ChartAndPin(timeframe)) => {
                         actions.push(ToolbarAction::PinTimeframe(timeframe));
                     }
-                    Some(TimeframePick::Unpin(timeframe)) => {
+                    Some(WorkspacePick::Favorite(timeframe)) => {
+                        actions.push(ToolbarAction::FavoriteTimeframe(timeframe));
+                    }
+                    Some(WorkspacePick::Unpin(timeframe)) => {
                         actions.push(ToolbarAction::UnpinTimeframe(timeframe));
                     }
                     None => {}
@@ -218,9 +222,19 @@ fn left_items(input: &ToolbarInput) -> Vec<Item> {
             .on_click(ToolbarAction::CompareSymbol),
     ));
     items.push(Item::Separator);
-    // One button for the tab's timeframe; its popover lists the presets and the pinned ones.
+    // Favorites are direct shortcuts; the dropdown remains available for every interval.
+    let mut favorites = input.pinned.to_vec();
+    favorites.sort();
+    favorites.dedup();
+    for tf in favorites {
+        let mut button = Button::new(("favorite-timeframe",tf.label()),tf.description())
+            .label(tf.label()).active(tf == input.timeframe)
+            .on_click(ToolbarAction::SetTimeframe(tf));
+        button.quiet = true;
+        items.push(Item::Button(button));
+    }
     let mut timeframe = Button::new("timeframe", tr!("Timeframe"))
-        .label(input.timeframe.label())
+        .label(if input.pinned.contains(&input.timeframe) { String::new() } else {input.timeframe.label()})
         .chevron()
         .with_menu(Menu::Timeframe);
     timeframe.keep_label = true;
