@@ -284,9 +284,11 @@ fn the_header_change_reads_in_price_and_percent() {
         visible_price_move(&candles, 2, 0.0, 0),
         Some((-20.0, -20.0 / 110.0 * 100.0))
     );
-    assert_eq!(change_text(Some(67.125), 0.1), "+$67.125 (+0.10%)");
-    assert_eq!(change_text(Some(-20.0), -18.18), "-$20.00 (-18.18%)");
-    assert_eq!(change_text(None, 0.0), "+0.00%");
+    assert_eq!(change_text(Some(67.125), 0.1, None), "+$67.125 (+0.10%)");
+    assert_eq!(change_text(Some(-20.0), -18.18, Some(2)), "-$20.00 (-18.18%)");
+    assert_eq!(change_text(None, 0.0, None), "+0.00%");
+    assert_eq!(change_text(Some(264.56999552), 290.7, Some(2)), "+$264.57 (+290.70%)");
+    assert_eq!(change_text(Some(0.00017), 0.02, Some(5)), "+$0.00017 (+0.02%)");
 }
 
 fn hourly(closes: &[f64]) -> Vec<Kline> {

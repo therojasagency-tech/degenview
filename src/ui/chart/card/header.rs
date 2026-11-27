@@ -221,8 +221,11 @@ impl ChartCard {
                                         .size()
                                         .x
                                 };
-                                let full = change_text(wide.then_some(amount), percent);
-                                let short = change_text(None, percent);
+                                let decimals = self.appearance.axis_decimals.or_else(|| {
+                                    (last.close.abs() >= 1.0).then_some(2)
+                                });
+                                let full = change_text(wide.then_some(amount), percent, decimals);
+                                let short = change_text(None, percent, decimals);
                                 let text = if measure(&full) <= room {
                                     Some(full)
                                 } else if measure(&short) <= room {
@@ -384,12 +387,18 @@ fn pills_beside_star<R>(
 
 /// `+$67.13 (+0.10%)`, or `+0.10%` when the amount is left out (prediction markets quote
 /// probabilities, so a price difference means nothing there).
-pub(super) fn change_text(amount: Option<f64>, percent: f64) -> String {
+pub(super) fn change_text(amount: Option<f64>, percent: f64, decimals: Option<u8>) -> String {
     let sign = if percent >= 0.0 { "+" } else { "-" };
     match amount {
         Some(amount) => format!(
             "{sign}{} ({sign}{:.2}%)",
-            format::headline(amount.abs(), false),
+            match decimals {
+                Some(places) => {
+                    let places = usize::from(places.min(12));
+                    format!("${}", format::group_thousands(&format!("{:.places$}", amount.abs())))
+                }
+                None => format::headline(amount.abs(), false),
+            },
             percent.abs()
         ),
         None => format!("{sign}{:.2}%", percent.abs()),

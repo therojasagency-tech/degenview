@@ -1,7 +1,7 @@
 //! Local authenticated WebSocket, backed by OpenChart's native live client.
 use super::LiveInbox;
 use crate::model::Timeframe;
-use crate::service::market::openchart::{Bar, decode_bar, resolution};
+use crate::service::market::openchart::{ADJUSTMENT, Bar, decode_bar, resolution};
 use crate::service::net::{url::encode_component, ws::Backoff};
 use eframe::egui;
 use serde::Deserialize;
@@ -17,6 +17,7 @@ struct Event {
     kind: String,
     symbol: String,
     resolution: String,
+    adjustment: String,
     #[serde(default)]
     bars: Vec<Bar>,
 }
@@ -30,7 +31,7 @@ pub(super) fn run(symbol: String, base: Timeframe, inbox: Arc<LiveInbox>, shutdo
             continue;
         };
         let addr = SocketAddr::from(([127,0,0,1],port));
-        let url = format!("ws://127.0.0.1:{port}/v1/live?symbol={}&resolution={interval}", encode_component(&symbol));
+        let url = format!("ws://127.0.0.1:{port}/v1/live?symbol={}&resolution={interval}&adjustment={ADJUSTMENT}", encode_component(&symbol));
         if let Ok(mut request) = url.as_str().into_client_request() {
             if let Ok(header) = format!("Bearer {token}").parse() {
                 request.headers_mut().insert("authorization", header);
@@ -44,7 +45,7 @@ pub(super) fn run(symbol: String, base: Timeframe, inbox: Arc<LiveInbox>, shutdo
                             match socket.read() {
                                 Ok(Message::Text(text)) => {
                                     let Ok(event) = serde_json::from_str::<Event>(text.as_str()) else { break };
-                                    if event.symbol != symbol || event.resolution != interval { break; }
+                                    if event.symbol != symbol || event.resolution != interval || event.adjustment != ADJUSTMENT { break; }
                                     last_activity = Instant::now();
                                     backoff.reset();
                                     if event.kind == "bars" {

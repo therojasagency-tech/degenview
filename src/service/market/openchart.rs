@@ -8,6 +8,11 @@ use std::time::Duration;
 pub struct OpenChart;
 pub const OPENCHART: OpenChart = OpenChart;
 
+/// One stable price basis for history, paging and live data. The provider applies
+/// stock splits where applicable; dividends are not included. Never silently fall back
+/// to raw candles, which could mix incompatible prices in a single chart.
+pub(super) const ADJUSTMENT: &str = "split";
+
 #[derive(Deserialize)]
 struct Search {
     provider: String,
@@ -84,7 +89,7 @@ pub(super) fn resolution(tf: Timeframe) -> Result<&'static str, ProviderError> {
 
 fn decode_history(history: History, symbol: &str, tf: Timeframe, token: &str) -> Result<Vec<Kline>, ProviderError> {
     if history.provider != "tradingview" || history.symbol != symbol
-        || history.resolution != token || history.adjustment != "raw" {
+        || history.resolution != token || history.adjustment != ADJUSTMENT {
         return Err(ProviderError::data("OpenChart response identity mismatch"));
     }
     let bars = history.bars.into_iter().map(|bar| decode_bar(bar, tf)).collect::<Result<Vec<_>, _>>()?;
@@ -135,7 +140,7 @@ impl MarketSource for OpenChart {
         if limit == 0 { return Ok(Vec::new()); }
         let symbol_arg = encode_component(symbol);
         let count = limit.min(5000);
-        let history = get(&format!("/v1/history?symbol={symbol_arg}&resolution={token}&count={count}"))?;
+        let history = get(&format!("/v1/history?symbol={symbol_arg}&resolution={token}&count={count}&adjustment={ADJUSTMENT}"))?;
         decode_history(history, symbol, timeframe, token)
     }
     fn fetch_klines_range(&self, symbol: &str, timeframe: Timeframe, start_ms: i64, end_ms: i64, max: usize) -> Result<Vec<Kline>, ProviderError> {
@@ -143,7 +148,7 @@ impl MarketSource for OpenChart {
         if max == 0 || start_ms >= end_ms || end_ms <= 0 { return Ok(Vec::new()); }
         let start_ms = start_ms.max(0);
         let symbol_arg = encode_component(symbol);
-        let history = get(&format!("/v1/history?symbol={symbol_arg}&resolution={token}&from={start_ms}&to={end_ms}"))?;
+        let history = get(&format!("/v1/history?symbol={symbol_arg}&resolution={token}&from={start_ms}&to={end_ms}&adjustment={ADJUSTMENT}"))?;
         let mut bars = decode_history(history, symbol, timeframe, token)?;
         bars.retain(|bar| bar.open_time >= start_ms && bar.open_time < end_ms);
         if bars.len() > max { bars.drain(..bars.len() - max); }
@@ -171,7 +176,7 @@ mod tests {
 
     #[test]
     fn watchlist_uses_last_two_native_sessions() {
-        let history: History = serde_json::from_str(r#"{"provider":"tradingview","symbol":"FX:EURUSD","resolution":"1d","adjustment":"raw","bars":[{"time":1767537000000,"open":1.1,"high":1.2,"low":1.0,"close":1.1,"volume":null},{"time":1767623400000,"open":1.1,"high":1.2,"low":1.0,"close":1.15,"volume":null}]}"#).unwrap();
+        let history: History = serde_json::from_str(r#"{"provider":"tradingview","symbol":"FX:EURUSD","resolution":"1d","adjustment":"split","bars":[{"time":1767537000000,"open":1.1,"high":1.2,"low":1.0,"close":1.1,"volume":null},{"time":1767623400000,"open":1.1,"high":1.2,"low":1.0,"close":1.15,"volume":null}]}"#).unwrap();
         let bars = decode_history(history,"FX:EURUSD",Timeframe::DAY_1,"1d").unwrap();
         let quote = daily_quote(&bars).unwrap();
         assert_eq!(quote.price,1.15);
@@ -179,6 +184,15 @@ mod tests {
         assert_eq!(quote.timestamp_ms,None);
         assert_eq!(daily_quote(&bars[1..]).unwrap().previous_day_price,None);
         assert!(daily_quote(&[]).is_err());
+    }
+
+    #[test]
+    fn history_rejects_a_different_price_basis() {
+        let fixture = r#"{"provider":"tradingview","symbol":"NASDAQ:AAPL","resolution":"1d","adjustment":"split","bars":[{"time":1598832000000,"open":125.0,"high":130.0,"low":120.0,"close":128.0,"volume":1000.0}]}"#;
+        let adjusted = serde_json::from_str(fixture).unwrap();
+        assert_eq!(decode_history(adjusted, "NASDAQ:AAPL", Timeframe::DAY_1, "1d").unwrap()[0].close, 128.0);
+        let raw = serde_json::from_str(&fixture.replace("\"split\"", "\"raw\"")).unwrap();
+        assert!(decode_history(raw, "NASDAQ:AAPL", Timeframe::DAY_1, "1d").is_err());
     }
 
     #[test]
@@ -190,7 +204,7 @@ mod tests {
 
     #[test]
     fn candle_open_timestamp_and_prices_stay_native() {
-        let history: History = serde_json::from_str(r#"{"provider":"tradingview","symbol":"OANDA:EURUSD","resolution":"1m","adjustment":"raw","bars":[{"time":1767623400000,"open":1.1,"high":1.2,"low":1.0,"close":1.15,"volume":null}]}"#).unwrap();
+        let history: History = serde_json::from_str(r#"{"provider":"tradingview","symbol":"OANDA:EURUSD","resolution":"1m","adjustment":"split","bars":[{"time":1767623400000,"open":1.1,"high":1.2,"low":1.0,"close":1.15,"volume":null}]}"#).unwrap();
         let bars = decode_history(history, "OANDA:EURUSD", Timeframe::MINUTE_1, "1m").unwrap();
         assert_eq!(bars[0].open_time, 1767623400000);
         assert_eq!(bars[0].close, 1.15);

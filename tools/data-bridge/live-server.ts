@@ -12,7 +12,9 @@ export function seriesRequest(url: URL): SeriesRequest | undefined {
   const symbol = url.searchParams.get("symbol");
   const resolution = url.searchParams.get("resolution");
   if (!symbol || !/^[A-Z0-9_.-]+:[^\s:]{1,150}$/i.test(symbol) || !resolution || !resolutions.has(resolution)) return;
-  return { symbol, resolution: resolution as SeriesRequest["resolution"], adjustment: "raw" };
+  const adjustment = url.searchParams.get("adjustment") ?? "raw";
+  if (adjustment !== "raw" && adjustment !== "split" && adjustment !== "split_dividend") return;
+  return { symbol, resolution: resolution as SeriesRequest["resolution"], adjustment };
 }
 
 export function startBridgeServer(client: Client, token: string, handler: (request: Request) => Promise<Response>) {
@@ -55,7 +57,7 @@ export function startBridgeServer(client: Client, token: string, handler: (reque
           const retired = yield* Deferred.make<void>();
           const activity = yield* client.live(series, retired);
           yield* Stream.runForEach(activity, event => Effect.sync(() => {
-            send(ws, { ...event, symbol: series.symbol, resolution: series.resolution });
+            send(ws, { ...event, symbol: series.symbol, resolution: series.resolution, adjustment: series.adjustment });
           }));
         }).pipe(Effect.scoped);
         void Effect.runPromise(run, {signal:abort.signal}).then(
