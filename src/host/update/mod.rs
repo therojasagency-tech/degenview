@@ -5,7 +5,7 @@
 //! stateful bridge that runs them on `work_queue::UPDATES`, remembers the outcome, and exposes it
 //! as a plain `UpdateView` both UIs draw. Nothing here is persisted: a launch starts unchecked.
 
-use crate::build_info::VERSION;
+use crate::build_info::{FORK_VERSION, VERSION};
 use crate::i18n::tr;
 use crate::lock::lock;
 use crate::model::changelog::{Coverage, ReleaseNotes};
@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 mod review;
 
 /// The `setting` key holding the chosen update channel. Local to this Mac: not in `sync::record::policy`.
-pub const CHANNEL_KEY: &str = "update.channel";
+pub const CHANNEL_KEY: &str = "update.fork.channel.v1";
 
 /// How long after launch the first check waits, so it never competes with startup.
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(15);
@@ -183,9 +183,12 @@ impl UpdateHost {
     pub fn new() -> Self {
         let host = Self::with_target(
             Err(pending_target().to_owned()),
-            Channel::of_version(VERSION),
+            Channel::of_version(if cfg!(test) { VERSION } else { FORK_VERSION }),
         );
-        host.lock().target_pending = true;
+        host.lock().target_pending = cfg!(test);
+        if !cfg!(test) {
+            host.lock().target = Err(tr!("Manual installation from the fork releases page.").to_owned());
+        }
         host
     }
 
@@ -418,7 +421,7 @@ impl UpdateHost {
         let host = self.clone();
         let ctx = ctx.clone();
         work_queue::UPDATES.submit(move || {
-            host.finish_check(check::check(VERSION, channel), channel);
+            host.finish_check(check::check(FORK_VERSION, channel), channel);
             host.repaint(&ctx);
         });
     }
@@ -435,6 +438,8 @@ impl UpdateHost {
     /// `restart`. The caller names the version its person looked at: if a check has put a different
     /// release on offer since, nothing starts. True when the install started.
     pub fn install(&self, ctx: &egui::Context, version: &str) -> bool {
+        // Until the fork has its own signing and release provenance, install manually only.
+        if !cfg!(test) { return false; }
         let (app, release) = {
             let mut state = self.lock();
             let Ok(app) = state.target.clone() else {

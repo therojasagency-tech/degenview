@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /// The recent releases, prereleases included (`/releases/latest` never returns one, and is "the
 /// most recently created stable release", not the highest version).
-const RELEASE_LIST_URL: &str = "https://api.github.com/repos/degenview/degenview/releases";
+const RELEASE_LIST_URL: &str = "https://api.github.com/repos/therojasagency-tech/degenview/releases";
 /// Releases per page of the list, and how many pages one check reads at most. The list is ordered
 /// by creation, so a run of release candidates can push the newest stable release past page one.
 const PAGE_SIZE: usize = 30;
@@ -199,10 +199,26 @@ pub fn github_headers() -> [(&'static str, &'static str); 3] {
 
 /// Blocking: up to `MAX_PAGES` GETs. Call it from a worker thread.
 pub fn check(current: &str, channel: Channel) -> UpdateOutcome {
-    check_pages(current, channel, |page| {
+    fork_manual_offer(check_pages(current, channel, |page| {
         let url = format!("{RELEASE_LIST_URL}?per_page={PAGE_SIZE}&page={page}");
         http::get_text(&url, &github_headers(), Retry::Transient)
-    })
+    }))
+}
+
+/// A fork release is never passed to the upstream binary installer or its signing policy.
+fn fork_manual_offer(outcome: UpdateOutcome) -> UpdateOutcome {
+    match outcome {
+        UpdateOutcome::Available(mut release) => {
+            release.asset = None;
+            release.manual_only = Some(tr!("Manual installation from the fork releases page."));
+            let prefix = format!("{}/tag/", crate::build_info::FORK_RELEASES);
+            if !release.url.starts_with(&prefix) {
+                release.url = crate::build_info::FORK_RELEASES.to_owned();
+            }
+            UpdateOutcome::Available(release)
+        }
+        other => other,
+    }
 }
 
 /// `check` over a page source, so the paging is tested without a network.
@@ -451,6 +467,15 @@ mod tests {
         assert_eq!(release.manual_only, None);
         // An installable asset exists only on platforms the updater can replace in place.
         assert_eq!(release.asset.is_some(), platform_suffix().is_some());
+    }
+
+    #[test]
+    fn fork_offers_can_never_install_upstream_assets() {
+        let outcome = evaluate(&format!("[{}]", reply_by("v0.2.0", true, "github-actions[bot]")), "0.1.0", Channel::Stable);
+        let UpdateOutcome::Available(release) = fork_manual_offer(outcome) else { panic!("expected a release"); };
+        assert!(release.asset.is_none());
+        assert!(release.manual_only.is_some());
+        assert_eq!(release.url, crate::build_info::FORK_RELEASES);
     }
 
     #[test]

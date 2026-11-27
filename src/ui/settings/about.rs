@@ -1,7 +1,7 @@
 //! Settings ▸ About (Swift `AboutSettingsView`): the app icon, name and version, the license, the
 //! update channel and a copyable build summary, the project links, and the copyright line.
 
-use crate::build_info::{BUILD_ID, VERSION};
+use crate::build_info::{BUILD_ID, VERSION, FORK_NAME, FORK_VERSION, FORK_REPOSITORY, FORK_RELEASES, GIT_COMMIT};
 use crate::format::civil_from_days;
 use crate::host::update::{Phase, UpdateHost, UpdateView};
 use crate::i18n::tr;
@@ -15,7 +15,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 pub const NAME: &str = "DegenView";
 pub const LICENSE: &str = "GPL-3.0-only";
-pub const REPOSITORY_URL: &str = "https://github.com/degenview/degenview";
+pub const REPOSITORY_URL: &str = FORK_REPOSITORY;
 pub const DONATION_URL: &str = crate::ui::window::tab_bar::COFFEE_URL;
 pub const DOCS_URL: &str = crate::ui::window::tab_bar::DOCS_URL;
 
@@ -77,13 +77,13 @@ pub fn clipboard_summary(build_ms: Option<i64>) -> String {
             let local = ms + crate::service::system::timezone::local_utc_offset_secs(ms) * 1_000;
             let seconds = local.div_euclid(1_000).rem_euclid(86_400);
             format!(
-                "{NAME} {VERSION} ({BUILD_ID}) · built {} at {:02}:{:02}",
+                "{NAME} {VERSION} ({BUILD_ID}) · fork {FORK_VERSION} · commit {GIT_COMMIT} · built {} at {:02}:{:02}",
                 date_label(ms),
                 seconds / 3_600,
                 seconds % 3_600 / 60
             )
         }
-        None => format!("{NAME} {VERSION} ({BUILD_ID})"),
+        None => format!("{NAME} {VERSION} ({BUILD_ID}) · fork {FORK_VERSION} · commit {GIT_COMMIT}"),
     }
 }
 
@@ -114,6 +114,10 @@ pub fn show(ui: &mut Ui, updates: &UpdateHost) -> Outcome {
                         ui.set_width(width);
                         ui.spacing_mut().item_spacing = Vec2::ZERO;
                         header(ui, build);
+                        ui.add_space(10.0);
+                        ui.label(format!("{FORK_NAME} {FORK_VERSION} · base {VERSION}"));
+                        ui.label(tr!("Official updates are disabled in this build."));
+                        ui.hyperlink_to(tr!("Fork update channel"), FORK_RELEASES);
                         ui.add_space(20.0);
                         outcome.quit = update_status_card(ui, updates, &mut outcome.channel);
                         if updates.channel() == Channel::ReleaseCandidate {
@@ -145,6 +149,11 @@ pub fn show(ui: &mut Ui, updates: &UpdateHost) -> Outcome {
                                 |ui| {
                                     copy_button(ui, build);
                                     ui.add_space(6.0);
+                                    ui.label(format!("{}: {FORK_VERSION}", tr!("Fork version")));
+                                    ui.label(tr!("Git commit"));
+                                    if GIT_COMMIT.len() == 40 {
+                                        ui.hyperlink_to(GIT_COMMIT, format!("{FORK_REPOSITORY}/commit/{GIT_COMMIT}"));
+                                    }
                                     ui.label(
                                         kit::text(
                                             BUILD_ID,
@@ -233,7 +242,7 @@ fn card(view: &UpdateView) -> Card {
     let (headline, detail, tint, glyph) = match &view.phase {
         Phase::Unchecked | Phase::Checking => (
             tr!("Checking for updates…").to_owned(),
-            tr!("You're on version {version}.", version = VERSION),
+            tr!("You're on version {version}.", version = if cfg!(test) { VERSION } else { FORK_VERSION }),
             NEUTRAL,
             Glyph::Spinner,
         ),
@@ -241,7 +250,7 @@ fn card(view: &UpdateView) -> Card {
             tr!("DegenView is up to date").to_owned(),
             tr!(
                 "You're on the latest version, {version}.",
-                version = VERSION
+                version = if cfg!(test) { VERSION } else { FORK_VERSION }
             ),
             UP_TO_DATE,
             Glyph::Icon(Icon::Check),
@@ -249,7 +258,7 @@ fn card(view: &UpdateView) -> Card {
         Phase::Available { version, note, .. } => (
             tr!("DegenView {version} is available", version = version),
             note.clone()
-                .unwrap_or_else(|| tr!("You're on version {version}.", version = VERSION)),
+                .unwrap_or_else(|| tr!("You're on version {version}.", version = if cfg!(test) { VERSION } else { FORK_VERSION })),
             kit::ORANGE,
             Glyph::Icon(Icon::ArrowUp),
         ),

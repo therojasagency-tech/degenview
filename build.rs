@@ -30,6 +30,7 @@ fn build_id() {
         && std::env::var_os("DEGENVIEW_BUILD_ID").is_none()
     {
         println!("cargo:rustc-env=DEGENVIEW_BUILD_ID=dev");
+        println!("cargo:rustc-env=DEGENVIEW_GIT_COMMIT=unknown");
         return;
     }
     let git = |args: &[&str]| {
@@ -63,6 +64,8 @@ fn build_id() {
         })
         .unwrap_or_else(|| "unknown".to_owned());
     println!("cargo:rustc-env=DEGENVIEW_BUILD_ID={id}");
+    let commit = git(&["rev-parse", "HEAD"]).filter(|sha| sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit())).unwrap_or_else(|| "unknown".to_owned());
+    println!("cargo:rustc-env=DEGENVIEW_GIT_COMMIT={commit}");
 }
 
 /// Exposes `DEGENVIEW_BUILD_TIME_MS`: when the build ran, as epoch milliseconds, or

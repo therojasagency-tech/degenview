@@ -21931,3 +21931,23 @@ msgstr ""
 #: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
 msgid "No more drawing identifiers are available."
 msgstr ""
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Fork update channel"
+msgstr ""
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Manual installation from the fork releases page."
+msgstr ""
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Fork version"
+msgstr ""
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Git commit"
+msgstr ""
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Official updates are disabled in this build."
+msgstr ""

@@ -20673,3 +20673,23 @@ msgstr "Esta versión no puede sustituir de forma segura los dibujos no reconoci
 #: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
 msgid "No more drawing identifiers are available."
 msgstr "No quedan identificadores de dibujos disponibles."
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Fork update channel"
+msgstr "Canal de actualizaciones del fork"
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Manual installation from the fork releases page."
+msgstr "Instalación manual desde la página de versiones del fork."
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Fork version"
+msgstr "Versión del fork"
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Git commit"
+msgstr "Commit de Git"
+
+#: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
+msgid "Official updates are disabled in this build."
+msgstr "Las actualizaciones oficiales están desactivadas en esta compilación."

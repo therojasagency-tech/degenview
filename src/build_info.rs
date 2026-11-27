@@ -3,6 +3,13 @@
 
 /// The app's version, as `Cargo.toml` states it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Independent release numbering for the custom fork (tags v0.1.0, v0.1.1, ...).
+/// Never compare upstream release numbers with this channel.
+pub const FORK_VERSION: &str = "0.1.0";
+pub const FORK_NAME: &str = "DegenView Fork";
+pub const FORK_REPOSITORY: &str = "https://github.com/therojasagency-tech/degenview";
+pub const FORK_RELEASES: &str = "https://github.com/therojasagency-tech/degenview/releases";
+pub const GIT_COMMIT: &str = env!("DEGENVIEW_GIT_COMMIT");
 /// The commit this build came from (`-dirty` when it had uncommitted changes), set by `build.rs`.
 /// Shown in Settings ▸ About and crash reports for bug reports; nothing else reads it.
 pub const BUILD_ID: &str = env!("DEGENVIEW_BUILD_ID");
