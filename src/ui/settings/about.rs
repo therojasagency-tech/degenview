@@ -116,6 +116,13 @@ pub fn show(ui: &mut Ui, updates: &UpdateHost) -> Outcome {
                         header(ui, build);
                         ui.add_space(10.0);
                         ui.label(format!("{FORK_NAME} {FORK_VERSION} · base {VERSION}"));
+                        ui.label(format!("{}: {FORK_VERSION}", tr!("Fork version")));
+                        ui.label(tr!("Git commit"));
+                        if GIT_COMMIT.len() == 40 {
+                            ui.hyperlink_to(GIT_COMMIT, format!("{FORK_REPOSITORY}/commit/{GIT_COMMIT}"));
+                        } else {
+                            ui.label(BUILD_ID);
+                        }
                         ui.label(tr!("Official updates are disabled in this build."));
                         ui.hyperlink_to(tr!("Fork update channel"), FORK_RELEASES);
                         ui.add_space(20.0);
@@ -149,11 +156,6 @@ pub fn show(ui: &mut Ui, updates: &UpdateHost) -> Outcome {
                                 |ui| {
                                     copy_button(ui, build);
                                     ui.add_space(6.0);
-                                    ui.label(format!("{}: {FORK_VERSION}", tr!("Fork version")));
-                                    ui.label(tr!("Git commit"));
-                                    if GIT_COMMIT.len() == 40 {
-                                        ui.hyperlink_to(GIT_COMMIT, format!("{FORK_REPOSITORY}/commit/{GIT_COMMIT}"));
-                                    }
                                     ui.label(
                                         kit::text(
                                             BUILD_ID,
@@ -1080,11 +1082,11 @@ mod tests {
         assert_eq!(header_subtitle(None), format!("Version {VERSION}"));
         assert_eq!(
             clipboard_summary(None),
-            format!("DegenView {VERSION} ({BUILD_ID})")
+            format!("DegenView {VERSION} ({BUILD_ID}) · fork {FORK_VERSION} · commit {GIT_COMMIT}")
         );
         assert_eq!(
             clipboard_summary(Some(ms)),
-            format!("DegenView {VERSION} ({BUILD_ID}) · built Oct 11, 2026 at 02:14")
+            format!("DegenView {VERSION} ({BUILD_ID}) · fork {FORK_VERSION} · commit {GIT_COMMIT} · built Oct 11, 2026 at 02:14")
         );
     }
 

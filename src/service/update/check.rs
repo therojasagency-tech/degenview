@@ -1,4 +1,4 @@
-//! "Is there a newer DegenView?" — asks GitHub for the recent releases of `degenview/degenview`,
+//! "Is there a newer DegenView Fork?" — checks only the custom fork releases,
 //! picks the newest one the chosen `Channel` accepts and compares its tag with the running version.
 //! Read-only: it never downloads or installs anything, it only reports where the release page is.
 
@@ -16,7 +16,7 @@ const RELEASE_LIST_URL: &str = "https://api.github.com/repos/therojasagency-tech
 const PAGE_SIZE: usize = 30;
 const MAX_PAGES: usize = 3;
 /// Where "view release" falls back to when the API reply carries no page URL.
-pub const RELEASES_URL: &str = "https://github.com/degenview/degenview/releases";
+pub const RELEASES_URL: &str = crate::build_info::FORK_RELEASES;
 
 /// Which releases the updater offers. A channel also takes everything more stable than itself, so
 /// a Release Candidate user moves on to `0.6.0` rather than staying on `0.6.0-rc.2`.

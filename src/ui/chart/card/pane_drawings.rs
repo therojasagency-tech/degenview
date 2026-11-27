@@ -300,6 +300,25 @@ fn horizontal_tag(drawing: &Drawing, geometry: &PaneGeometry, pine: &VisualOutpu
 mod tests {
     use super::*;
     #[test]
+    fn a_horizontal_level_uses_the_indicator_precision_and_value_space() {
+        let plot = Rect::from_min_size(Pos2::ZERO, Vec2::new(300.0, 150.0));
+        let geometry = PaneGeometry { plot, scale: PriceScale::linear(-10.0, 100.0, plot.top(), plot.height()) };
+        let mut pine = VisualOutput::default();
+        pine.presentation.number.precision = Some(2);
+        let at = Anchor { time_ms: 1_000, price: 30.12345 };
+        let mut style = Tool::HorizontalLine.default_style();
+        style.price_labels = true;
+        let drawing = Drawing::build(Tool::HorizontalLine, 1, &[at], style).unwrap();
+        let (y,color,text) = horizontal_tag(&drawing,&geometry,&pine).unwrap();
+        assert_eq!(text,"30.12");
+        assert_eq!(color, series::color(style.stroke.color));
+        assert!((geometry.scale.price(y)-at.price).abs() < 0.001);
+        style.price_labels = false;
+        let no_label = Drawing::build(Tool::HorizontalLine,2,&[at],style).unwrap();
+        assert!(horizontal_tag(&no_label,&geometry,&pine).is_none());
+    }
+
+    #[test]
     fn moving_a_trend_line_changes_value_and_time_but_not_its_id() {
         let a = Anchor { time_ms: 1_000, price: -2.0 };
         let b = Anchor { time_ms: 2_000, price: 8.0 };

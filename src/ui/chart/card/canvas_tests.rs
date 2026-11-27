@@ -131,6 +131,10 @@ impl Harness {
     }
 
     pub(super) fn frame(&mut self) -> (Vec<ClippedShape>, ChartPointer) {
+        self.frame_with_tool(crate::model::Tool::Cursor)
+    }
+
+    fn frame_with_tool(&mut self, tool: crate::model::Tool) -> (Vec<ClippedShape>, ChartPointer) {
         let input = egui::RawInput {
             time: Some(self.clock),
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, self.size)),
@@ -164,7 +168,7 @@ impl Harness {
         );
         let (indicators, drawings) = (&self.indicators, &self.drawings);
         let mut output = self.ctx.run_ui(input, |ui| {
-            let mut drawing = DrawingFrame::new(drawings, crate::model::Tool::Cursor, None, 1)
+            let mut drawing = DrawingFrame::new(drawings, tool, None, 1)
                 .with_view(Timeframe::HOUR_1, false);
             let mut replay = ReplayChartFrame {
                 selecting: picking,
@@ -2403,4 +2407,27 @@ fn pane_pointer_draws_its_horizontal_line_and_shares_the_time_column() {
     let horizontal: Vec<_> = lines.iter().filter(|(p,_)| p[0].y == p[1].y).collect();
     assert_eq!(horizontal.len(), 1);
     assert!((horizontal[0].0[0].y-at.y).abs() <= 1.5);
+}
+
+
+#[test]
+fn ruler_claims_indicator_pane_before_navigation() {
+    use crate::model::Tool;
+    let mut harness = with_panes(ChartCanvas::default());
+    harness.draw();
+    let (heights, first) = pane_heights(&harness);
+    let plot = harness.card.probe.expect("drawn chart").plot;
+    let start = Pos2::new(plot.left()+plot.width()*0.25,first+heights.panes[0]*0.65);
+    let end = Pos2::new(plot.left()+plot.width()*0.60,first+heights.panes[0]*0.40);
+    harness.pointer = Some(start);
+    harness.frame_with_tool(Tool::Ruler);
+    harness.button = Some(true);
+    harness.frame_with_tool(Tool::Ruler);
+    assert_eq!(harness.cursor,egui::CursorIcon::Crosshair);
+    harness.pointer = Some(end);
+    harness.frame_with_tool(Tool::Ruler);
+    harness.button = Some(false);
+    let (shapes,_) = harness.frame_with_tool(Tool::Ruler);
+    let drawn = gather(&shapes);
+    assert!(drawn.texts.iter().any(|(_,s,_)| s.contains("Δ")), "{:?}", drawn.texts);
 }

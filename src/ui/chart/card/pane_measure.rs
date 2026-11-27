@@ -96,9 +96,10 @@ impl State {
         // Own the gesture from the initial press, not from egui's drag threshold. Existing
         // drawings and chart navigation must never get the first chance to claim the ruler.
         let starts = armed && !active && ((pressed && owns_pointer) || response.drag_started_by(primary));
-        if starts && let Some((pane, pine, geometry)) = origin.and_then(pane_at) {
+        if starts && let Some(point) = origin.or(pointer)
+            && let Some((pane, pine, geometry)) = pane_at(point) {
             let proj = projection(view, data, &geometry, ui.ctx());
-            let a = anchor(&proj, origin.unwrap(), pine, data.bars, magnet);
+            let a = anchor(&proj, point, pine, data.bars, magnet);
             self.measure = Some(Measure { source: data.source, symbol: data.symbol.to_owned(), timeframe, pane, a, b: a, dragging: true });
         } else if !active && pressed && response.hovered() {
             // A completed measurement is kept until the next click, just like the price ruler.
