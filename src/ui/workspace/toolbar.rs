@@ -96,6 +96,7 @@ pub enum ToolbarAction {
     OpenPineStudio,
     /// Open the indicator picker for the focused chart.
     OpenIndicators,
+    OpenIndicatorTemplates,
     /// Open the focused chart's settings sheet.
     OpenChartSettings,
     ToggleReplay,
@@ -240,6 +241,12 @@ fn left_items(input: &ToolbarInput) -> Vec<Item> {
             .label(tr!("Indicators"))
             .enabled(input.chart.is_some_and(|chart| chart.indicators))
             .on_click(ToolbarAction::OpenIndicators),
+    ));
+    items.push(Item::Button(
+        Button::new("indicator-templates", tr!("Indicator templates"))
+            .icon(Icon::CopyDoc)
+            .enabled(input.chart.is_some_and(|chart| chart.indicators))
+            .on_click(ToolbarAction::OpenIndicatorTemplates),
     ));
     items.push(Item::Separator);
     let chart_type = input

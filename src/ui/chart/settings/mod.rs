@@ -5,6 +5,7 @@ mod appearance;
 pub(in crate::ui) mod canvas;
 pub(in crate::ui) mod compare;
 mod indicators;
+mod indicator_templates;
 pub(in crate::ui) mod overlay;
 pub mod overlay_popover;
 mod scripts;
@@ -98,6 +99,7 @@ pub struct ChartSettingsState {
     /// What the Scripts page's search field holds.
     script_query: String,
     templates: TemplateState,
+    indicator_templates: indicator_templates::Controls,
     /// The Compare page's open cards, search and pending confirmation.
     compare: compare::CompareState,
 }
@@ -132,6 +134,7 @@ pub enum ChartSettingsAction {
     ConfigureScript(u64, Rect),
     /// Give every chart of the workspace this look.
     ApplyToAll(crate::model::chart::template::ApplyScope),
+    ApplyIndicatorTemplate(u64),
     /// Read the price axis in this mode.
     SetScaleMode(PriceScaleMode),
     /// Change a compared market.
@@ -173,7 +176,15 @@ pub fn show(
                         .show(ui, |ui| {
                             ui.set_width(WIDTH - 2.0 * f32::from(sheet::INSET));
                             match state.tab {
-                                Tab::Indicators => indicators_page(ui, &mut c),
+                                Tab::Indicators => {
+                                    if c.source.takes_indicators() {
+                                        if let Some(id) = indicator_templates::show(ui, &mut state.indicator_templates, &c) {
+                                            action = Some(ChartSettingsAction::ApplyIndicatorTemplate(id));
+                                        }
+                                        ui.separator();
+                                    }
+                                    indicators_page(ui, &mut c);
+                                }
                                 Tab::Scripts => {
                                     if let Some(next) = scripts_page(ui, state, &mut c) {
                                         action = Some(next);

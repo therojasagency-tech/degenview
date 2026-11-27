@@ -67,6 +67,15 @@ impl ChartWorkspace {
                 self.focus_chart(chart_id);
                 self.open_compare_picker();
             }
+            Some(ChartSettingsAction::ApplyIndicatorTemplate(id)) => {
+                match self.apply_indicator_template(chart_id, id) {
+                    Ok(name) => {
+                        self.script_popover = None;
+                        self.settings_state.say(crate::i18n::tr!("Applied indicator template: {name}", name = name));
+                    }
+                    Err(message) => self.settings_state.say(message),
+                }
+            }
             Some(ChartSettingsAction::ApplyToAll(scope)) => {
                 let appearance = self
                     .charts
@@ -81,6 +90,42 @@ impl ChartWorkspace {
             None => {}
         }
         actions
+    }
+
+    /// Loads a frozen set without touching the market, drawings, viewport or appearance.
+    fn apply_indicator_template(&mut self, chart_id: u64, id: u64) -> Result<String, String> {
+        use crate::i18n::tr;
+        use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
+        use crate::model::alert::pine::PineAlertSubscription;
+        use crate::workspace::undo::Snapshot;
+        let (template, subscriptions) = {
+            let store = crate::lock::lock(&self.store);
+            let templates = store.setting_strict::<Vec<IndicatorTemplate>>(KEY)
+                .map_err(|e| e.to_string())?.unwrap_or_default();
+            let template = templates.into_iter().find(|t| t.id == id)
+                .ok_or_else(|| tr!("That template no longer exists.").to_owned())?;
+            let subscriptions = store.documents_strict::<PineAlertSubscription>("pine_alert_subscription")
+                .map_err(|e| e.to_string())?;
+            (template, subscriptions)
+        };
+        let chart = self.charts.iter_mut().find(|c| c.id == chart_id)
+            .ok_or_else(|| tr!("Chart no longer exists.").to_owned())?;
+        if !chart.takes_indicators() {
+            return Err(tr!("This chart does not support indicators.").to_owned());
+        }
+        // A bound alert must never be reassigned to a different script or silently paused.
+        // Require the user to remove its binding explicitly before replacing this chart's scripts.
+        if subscriptions.iter().any(|s| s.chart_id == chart_id && s.instance_id.is_some()) {
+            return Err(tr!("This chart has linked Pine alerts. Remove their bindings before replacing its indicators.").to_owned());
+        }
+        let before = Snapshot::indicators_of(chart);
+        let max = chart.chart.pine_instances().iter().map(|i| i.id).max().unwrap_or(0);
+        let instances = template.fresh_instances(max)
+            .ok_or_else(|| tr!("No more indicator instance identifiers are available.").to_owned())?;
+        chart.indicators = template.indicators;
+        chart.chart.set_pine_instances(instances);
+        self.history.record(chart_id, before);
+        Ok(template.name)
     }
 
     /// Gives every other chart of this workspace `appearance`. The plan is made first, for every
