@@ -299,6 +299,19 @@ fn headings(entries: &[Entry]) -> Vec<&str> {
 }
 
 #[test]
+fn indicator_templates_have_their_own_context_submenu() {
+    let mut facts = facts();
+    facts.indicator_templates_supported = true;
+    facts.indicator_templates = vec![template(7,"Sentiment",false,true)];
+    let entries = menu(&context(Some(118_150.0)), &facts);
+    let submenu = items(&entries).into_iter().find(|i| i.label == "Indicator templates").unwrap();
+    assert!(find(&submenu.children, &Command::ApplyIndicatorTemplate(7)).unwrap().current);
+    assert!(find(&submenu.children, &Command::SaveIndicatorTemplate).is_some());
+    assert!(find(&submenu.children, &Command::ManageIndicatorTemplates).is_some());
+    assert!(find(&submenu.children, &Command::UpdateIndicatorTemplates).is_some());
+}
+
+#[test]
 fn the_template_submenu_groups_my_templates_presets_and_actions() {
     let mut facts = facts();
     facts.templates = vec![

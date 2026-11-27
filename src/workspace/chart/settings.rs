@@ -101,7 +101,7 @@ impl ChartWorkspace {
     }
 
     /// Loads a frozen set without touching the market, drawings, viewport or appearance.
-    fn apply_indicator_template(&mut self, chart_id: u64, id: u64) -> Result<String, String> {
+    pub(in crate::workspace) fn apply_indicator_template(&mut self, chart_id: u64, id: u64) -> Result<String, String> {
         use crate::i18n::tr;
         use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
         use crate::model::alert::pine::PineAlertSubscription;

@@ -44,6 +44,7 @@ pub(in crate::workspace) struct OpenMenu {
     serial: u64,
     /// The templates the submenu lists, read once when the menu opened.
     templates: Vec<TemplateRow>,
+    indicator_templates: Vec<TemplateRow>,
 }
 
 pub(in crate::workspace) struct Notice {
@@ -112,6 +113,18 @@ impl ChartWorkspace {
             price: request.price,
             target: request.target,
         };
+        let indicator_templates = if matches!(context.target, chart::context::Target::Background) && chart.takes_indicators() {
+            use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
+            let store = crate::lock::lock(&self.store);
+            let mut rows = store.setting_strict::<Vec<IndicatorTemplate>>(KEY).ok().flatten().unwrap_or_default();
+            rows.sort_by_key(|row| row.name.to_lowercase());
+            rows.into_iter().map(|row| TemplateRow {
+                id: row.id,
+                current: row.matches_chart(&chart.indicators, chart.chart.pine_instances()),
+                name: row.name,
+                built_in: false,
+            }).collect()
+        } else { Vec::new() };
         self.focus_chart(chart_id);
         self.context.serial += 1;
         let templates = if matches!(context.target, chart::context::Target::Background) {
@@ -138,6 +151,7 @@ impl ChartWorkspace {
             state: MenuState::default(),
             serial: self.context.serial,
             templates,
+            indicator_templates,
         });
     }
 
@@ -273,6 +287,7 @@ impl ChartWorkspace {
                 appearance.style.effective_type(chart.source),
                 chart.source,
             ),
+            indicator_templates_supported: chart.takes_indicators(),
             ..Facts::default()
         };
         match &context.target {
@@ -355,7 +370,8 @@ impl ChartWorkspace {
             match self.context_facts(ctx, &open.context, &open.templates) {
                 // The chart closed while the menu was up: it goes with it.
                 None => {}
-                Some(facts) => {
+                Some(mut facts) => {
+                    facts.indicator_templates = open.indicator_templates.clone();
                     let entries = chart::context::menu(&open.context, &facts);
                     let id = Id::new(("chart-context-menu", self.id, open.serial));
                     let outcome = context_menu::show(
@@ -470,6 +486,23 @@ impl ChartWorkspace {
             }
             Command::ToggleSessionStats => {
                 self.context.stats_chart = toggled(self.context.stats_chart, chart_id);
+            }
+            Command::ApplyIndicatorTemplate(id) => {
+                match self.apply_indicator_template(chart_id,id) {
+                    Ok(name) => {
+                        self.script_popover = None;
+                        self.say(tr!("Applied indicator template: {name}",name = name),false);
+                    }
+                    Err(error) => self.say(error,true),
+                }
+            }
+            Command::SaveIndicatorTemplate | Command::ManageIndicatorTemplates | Command::UpdateIndicatorTemplates => {
+                self.settings_state = ChartSettingsState::default();
+                self.settings_state.tab = chart_settings::Tab::Indicators;
+                if matches!(command, Command::SaveIndicatorTemplate) {
+                    self.settings_state.focus_indicator_template_name();
+                }
+                self.settings_chart = Some(chart_id);
             }
             Command::ApplyTemplate(id) => {
                 let store = self.store.clone();

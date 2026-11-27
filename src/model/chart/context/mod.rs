@@ -161,6 +161,8 @@ pub struct Facts {
     /// entry is offered greyed out where it has none.
     pub bar_countdown_eligible: bool,
     pub templates: Vec<TemplateRow>,
+    pub indicator_templates: Vec<TemplateRow>,
+    pub indicator_templates_supported: bool,
     pub pane: Option<PaneFacts>,
     pub alert: Option<AlertState>,
     pub order: Option<OrderFacts>,
@@ -188,6 +190,8 @@ impl Default for Facts {
             bar_countdown: true,
             bar_countdown_eligible: true,
             templates: Vec::new(),
+            indicator_templates: Vec::new(),
+            indicator_templates_supported: false,
             pane: None,
             alert: None,
             order: None,
@@ -217,6 +221,10 @@ pub enum Command {
     ToggleObjectTree,
     ToggleSessionStats,
     ApplyTemplate(u64),
+    ApplyIndicatorTemplate(u64),
+    SaveIndicatorTemplate,
+    ManageIndicatorTemplates,
+    UpdateIndicatorTemplates,
     SaveTemplate,
     ManageTemplates,
     ResetTemplate,
@@ -762,12 +770,15 @@ fn background(context: &ChartContext, facts: &Facts) -> Vec<Entry> {
         .disabled_unless(facts.time_locked || context.time_ms.is_some(), no_price()),
     ];
 
-    let utilities = vec![
+    let mut utilities = vec![
         Item::new(Command::ToggleTable, tr!("Table view")).checked(facts.table_open),
         Item::new(Command::ToggleObjectTree, tr!("Object tree")).checked(facts.tree_open),
         Item::new(Command::ToggleSessionStats, tr!("Session statistics")).checked(facts.stats_open),
         template_submenu(facts),
     ];
+    if facts.indicator_templates_supported {
+        utilities.push(indicator_template_submenu(facts));
+    }
 
     let cleanup = vec![
         Item::new(
@@ -793,6 +804,25 @@ fn background(context: &ChartContext, facts: &Facts) -> Vec<Entry> {
         cleanup,
         settings,
     ])
+}
+
+fn indicator_template_submenu(facts: &Facts) -> Item {
+    let mut children = vec![Entry::Heading(tr!("My templates").to_owned())];
+    if facts.indicator_templates.is_empty() {
+        let mut none = Item::new(Command::SaveIndicatorTemplate, tr!("None saved yet"))
+            .disabled_unless(false, tr!("Save current indicators"));
+        none.command = None;
+        children.push(Entry::Item(none));
+    }
+    for row in &facts.indicator_templates {
+        children.push(Entry::Item(Item::new(Command::ApplyIndicatorTemplate(row.id), row.name.clone()).current(row.current)));
+    }
+    children.push(Entry::Separator);
+    children.push(Entry::Item(Item::new(Command::SaveIndicatorTemplate,tr!("Save current as template…"))));
+    children.push(Entry::Item(Item::new(Command::UpdateIndicatorTemplates,tr!("Update indicator template…"))
+        .disabled_unless(!facts.indicator_templates.is_empty(),tr!("None saved yet"))));
+    children.push(Entry::Item(Item::new(Command::ManageIndicatorTemplates,tr!("Manage templates…"))));
+    Item::submenu(tr!("Indicator templates"),children).glyph(Glyph::Layers)
 }
 
 fn template_submenu(facts: &Facts) -> Item {

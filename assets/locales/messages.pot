@@ -21959,3 +21959,39 @@ msgstr ""
 #: src/ui/chart/settings/indicator_templates.rs
 msgid "The template has changed. Refresh and try again."
 msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Save new template"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Current indicators"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Matches current chart"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Load"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Update indicator template…"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "No indicators"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "{count} indicators"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Indicator template renamed."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Indicator template duplicated."
+msgstr ""

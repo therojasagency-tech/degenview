@@ -20701,3 +20701,39 @@ msgstr "¿Sustituir los indicadores y ajustes guardados por los de este gráfico
 #: src/ui/chart/settings/indicator_templates.rs
 msgid "The template has changed. Refresh and try again."
 msgstr "La plantilla ha cambiado. Actualiza la lista y vuelve a intentarlo."
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Save new template"
+msgstr "Guardar nueva plantilla"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Current indicators"
+msgstr "Indicadores actuales"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Matches current chart"
+msgstr "Coincide con el gráfico actual"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Load"
+msgstr "Cargar"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Update indicator template…"
+msgstr "Actualizar plantilla de indicadores…"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "No indicators"
+msgstr "Sin indicadores"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "{count} indicators"
+msgstr "{count} indicadores"
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Indicator template renamed."
+msgstr "Plantilla de indicadores renombrada."
+
+#: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
+msgid "Indicator template duplicated."
+msgstr "Plantilla de indicadores duplicada."

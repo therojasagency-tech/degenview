@@ -14,6 +14,16 @@ pub struct IndicatorTemplate {
 }
 
 impl IndicatorTemplate {
+    /// Runtime ids change when applying a template. Compare the actual settings instead.
+    pub fn matches_chart(&self, indicators: &IndicatorConfig, scripts: &[PineInstance]) -> bool {
+        &self.indicators == indicators && self.scripts.len() == scripts.len()
+            && self.scripts.iter().zip(scripts).all(|(saved, current)| {
+                let mut normalized = saved.clone();
+                normalized.id = current.id;
+                &normalized == current
+            })
+    }
+
     /// Replace only the saved indicator configuration; preserve the template's identity.
     pub fn update_from_chart(&mut self, indicators: IndicatorConfig, scripts: &[PineInstance]) {
         self.indicators = indicators;
@@ -73,6 +83,10 @@ mod tests {
         let mut expected = script;
         expected.id = 11;
         assert_eq!(instances[0], expected);
+        assert!(decoded.matches_chart(&decoded.indicators, &instances));
+        let mut changed = instances.clone();
+        changed[0].visible = true;
+        assert!(!decoded.matches_chart(&decoded.indicators, &changed));
         assert!(decoded.fresh_instances(u64::MAX).is_none());
     }
 }

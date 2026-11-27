@@ -107,6 +107,7 @@ pub struct ChartSettingsState {
 }
 
 impl ChartSettingsState {
+    pub fn focus_indicator_template_name(&mut self) { self.indicator_templates.focus_name = true; }
     pub fn set_current_drawings(&mut self, drawings: &[crate::model::Drawing]) {
         self.drawing_sets.set_current(drawings);
     }
