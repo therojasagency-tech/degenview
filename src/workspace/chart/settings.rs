@@ -218,6 +218,30 @@ mod tests {
     use crate::workspace::test_support::empty_workspace;
 
     #[test]
+    fn named_drawing_sets_keep_indicators_and_create_a_recovery_copy() {
+        use crate::model::chart::drawing_sets::{DrawingSet, KEY};
+        use crate::workspace::test_support::{chart_with_drawings, drawing_ids, rectangle};
+        let mut workspace = empty_workspace(23);
+        let id = chart_with_drawings(&mut workspace, "BTCUSDT", &[1,2]);
+        workspace.charts[0].chart.add_pine_instance(None,"COT","indicator(\"COT\")\nplot(close)");
+        let instances = workspace.charts[0].chart.pine_instances().to_vec();
+        let market = workspace.charts[0].drawing_market();
+        let set = DrawingSet { id: 1, name: "Weekly".into(), market: market.clone(), drawings: vec![rectangle(1,500)] };
+        crate::lock::lock(&workspace.store).set_setting(KEY,&vec![set]).unwrap();
+        assert_eq!(workspace.apply_drawing_set(id,1,false).unwrap(),"Weekly");
+        assert_eq!(workspace.charts[0].chart.pine_instances(),instances.as_slice());
+        assert_eq!(drawing_ids(&workspace,id).len(),1);
+        assert!(![1,2].contains(&drawing_ids(&workspace,id)[0]));
+        let saved = crate::lock::lock(&workspace.store).setting::<Vec<DrawingSet>>(KEY).unwrap();
+        assert_eq!(saved.len(),2);
+        assert_eq!(saved[1].market,market);
+        assert_eq!(saved[1].drawings.iter().map(crate::model::Drawing::id).collect::<Vec<_>>(),[1,2]);
+        workspace.undo(&egui::Context::default());
+        assert_eq!(drawing_ids(&workspace,id),[1,2]);
+        assert_eq!(workspace.charts[0].chart.pine_instances(),instances.as_slice());
+    }
+
+    #[test]
     fn indicator_template_changes_only_indicators_and_can_be_undone() {
         use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
         use crate::model::pine::instance::PineInstance;

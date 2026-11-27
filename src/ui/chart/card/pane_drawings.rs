@@ -6,7 +6,16 @@ use crate::model::{Drawing, DrawingCommand, InstrumentId, Tool, MagnetMode};
 #[derive(Default)]
 pub(super) struct State {
     draft: Option<Draft>,
+    movement: Option<Movement>,
     selected: Option<(String,u64)>,
+}
+
+struct Movement {
+    key: String,
+    original: Drawing,
+    preview: Drawing,
+    press: Anchor,
+    endpoint: Option<usize>,
 }
 
 struct Draft {
@@ -15,6 +24,26 @@ struct Draft {
     a: Anchor,
     b: Anchor,
     dragging: bool,
+}
+
+fn moved(original: &Drawing, press: Anchor, target: Anchor, endpoint: Option<usize>) -> Option<Drawing> {
+    let mut drawing = original.clone();
+    if let Some(index) = endpoint {
+        let mut anchors = drawing.anchors_mut();
+        **anchors.get_mut(index)? = target;
+    } else {
+        let dt = target.time_ms.saturating_sub(press.time_ms);
+        let dv = target.price - press.price;
+        for at in drawing.anchors_mut() {
+            at.time_ms = at.time_ms.checked_add(dt)?;
+            at.price += dv;
+        }
+    }
+    if let (Some(current),Some(before)) = (drawing.geometry_mut(),original.geometry()) {
+        current.constrain(before);
+        if !current.is_valid() { return None; }
+    }
+    drawing.anchors().iter().all(Anchor::is_finite).then_some(drawing)
 }
 
 fn single(tool: Tool) -> bool {
@@ -65,18 +94,20 @@ fn commit(draft: Draft, frame: &mut DrawingFrame) {
 impl State {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update(&mut self, ui: &egui::Ui, response: &Response, data: &FrameData, layout: &FrameLayout, view: &View, timeframe: Option<Timeframe>, instances: &[PineInstance], frame: &mut DrawingFrame, blocked: bool) -> bool {
-        let Some(sets) = frame.pane_sets else { self.draft = None; self.selected = None; return false; };
+        let Some(sets) = frame.pane_sets else { self.draft = None; self.movement = None; self.selected = None; return false; };
         let (origin,pointer,down,escape,delete,modifiers) = ui.input(|i| (
             i.pointer.press_origin(), i.pointer.latest_pos(), i.pointer.primary_down(),
             i.key_pressed(egui::Key::Escape), i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace), i.modifiers
         ));
         if blocked || frame.keys_blocked || frame.hide_all || !ui.input(|i| i.focused) {
             self.draft = None;
+            self.movement = None;
             return false;
         }
+        if frame.tool != Tool::Cursor { self.movement = None; }
         if self.draft.as_ref().is_some_and(|d| d.tool != frame.tool) { self.draft = None; }
-        if escape && (self.draft.is_some() || self.selected.is_some()) {
-            self.draft = None; self.selected = None;
+        if escape && (self.draft.is_some() || self.movement.is_some() || self.selected.is_some()) {
+            self.draft = None; self.movement = None; self.selected = None;
             frame.escape_consumed = true;
             return true;
         }
@@ -96,6 +127,54 @@ impl State {
         let pressed_pane = origin.and_then(pane_at);
         let hovered_pane = pointer.and_then(pane_at);
         let eraser = frame.cursor.caps().erases;
+        if eraser { self.movement = None; }
+        if let Some(movement) = &mut self.movement {
+            let Some((_,pine,geometry)) = panes.iter().find(|(key,_,_)| *key == movement.key) else {
+                self.movement = None;
+                return false;
+            };
+            let proj = projection(view,data,geometry,ui.ctx());
+            if let Some(point) = pointer {
+                let target = anchor(&proj,point,pine,data.bars,magnet);
+                if let Some(drawing) = moved(&movement.original,movement.press,target,movement.endpoint) {
+                    movement.preview = drawing;
+                }
+            }
+            if response.drag_stopped_by(primary) {
+                let movement = self.movement.take().unwrap();
+                if movement.preview != movement.original {
+                    frame.pane_commands.push((movement.key,DrawingCommand::Replace { id: movement.original.id(), drawing: movement.preview }));
+                }
+            } else if !down { self.movement = None; }
+            return true;
+        }
+        if frame.tool == Tool::Cursor && !eraser && frame.cursor.caps().edits_drawings && response.drag_started_by(primary)
+            && let Some((key,pine,geometry)) = pressed_pane
+            && let Some(point) = origin
+        {
+            let proj = projection(view,data,geometry,ui.ctx());
+            let drawings = sets.get(key);
+            let selected_handle = self.selected.as_ref().filter(|(k,_)| k == key)
+                .and_then(|(_,id)| drawings.iter().find(|d| d.id() == *id && !d.locked() && d.is_visible(frame.timeframe)))
+                .and_then(|d| d.anchors().iter().enumerate()
+                    .map(|(index,a)| (index,proj.point(*a).distance(point)))
+                    .filter(|(_,distance)| *distance <= 9.0)
+                    .min_by(|a,b| a.1.total_cmp(&b.1))
+                    .map(|(index,_)| (d.id(),Some(index))));
+            let hit = selected_handle.or_else(|| {
+                let local = DrawingFrame::new(drawings,Tool::Cursor,None,frame.next_id).with_view(frame.timeframe,false);
+                DrawingLayer::default().hit_drawing_id(&local,point,&proj).map(|id| (id,None))
+            });
+            if let Some((id,endpoint)) = hit
+                && let Some(drawing) = drawings.iter().find(|d| d.id() == id && !d.locked())
+            {
+                let press = if endpoint.is_some() { proj.anchor(point) } else { anchor(&proj,point,pine,data.bars,magnet) };
+                self.selected = Some((key.clone(),id));
+                self.movement = Some(Movement { key:key.clone(), original:drawing.clone(), preview:drawing.clone(), press, endpoint });
+                frame.select = Some(Vec::new());
+                return true;
+            }
+        }
         if (eraser || frame.tool == Tool::Cursor) && response.clicked_by(primary) {
             self.selected = None;
             if let Some((key,_,geometry)) = hovered_pane {
@@ -114,7 +193,7 @@ impl State {
             }
         }
         if delete && frame.tool == Tool::Cursor && !ui.ctx().egui_wants_keyboard_input()
-            && response.hovered() && hovered_pane.is_some()
+            && response.hovered() && hovered_pane.is_some_and(|(key,_,_)| self.selected.as_ref().is_some_and(|(selected,_)| selected == key))
             && let Some((key,id)) = self.selected.take()
         {
             if sets.get(&key).iter().any(|d| d.id() == id && !d.locked()) {
@@ -140,7 +219,7 @@ impl State {
             if finish {
                 let draft = self.draft.take().unwrap();
                 commit(draft,frame);
-            } else if (draft.dragging && !down) || (response.clicked_by(primary) && hovered_pane.is_none()) {
+            } else if (draft.dragging && !down) || (response.clicked_by(primary) && !hovered_pane.is_some_and(|(key,_,_)| *key == draft.key)) {
                 self.draft = None;
             }
             return true;
@@ -166,6 +245,11 @@ impl State {
         let Some(sets) = frame.pane_sets else { return; };
         let Some(key) = key(data,timeframe,instances,id) else { return; };
         let mut drawings = sets.get(&key).to_vec();
+        if let Some(movement) = self.movement.as_ref().filter(|m| m.key == key) {
+            if let Some(drawing) = drawings.iter_mut().find(|d| d.id() == movement.original.id()) {
+                *drawing = movement.preview.clone();
+            }
+        }
         if let Some(draft) = self.draft.as_ref().filter(|d| d.key == key) {
             if let Some(d) = build(draft,0,frame) { drawings.push(d); }
         }
@@ -181,6 +265,20 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moving_a_trend_line_changes_value_and_time_but_not_its_id() {
+        let a = Anchor { time_ms: 1_000, price: -2.0 };
+        let b = Anchor { time_ms: 2_000, price: 8.0 };
+        let original = Drawing::build(Tool::TrendLine, 7, &[a,b], Tool::TrendLine.default_style()).unwrap();
+        let target = Anchor { time_ms: 1_500, price: 3.0 };
+        let translated = moved(&original,a,target,None).unwrap();
+        assert_eq!(translated.id(), 7);
+        assert_eq!(translated.anchors(), vec![target, Anchor { time_ms: 2_500, price: 13.0 }]);
+        let endpoint = moved(&original,a,target,Some(0)).unwrap();
+        assert_eq!(endpoint.anchors(), vec![target,b]);
+        assert_eq!(original.anchors(), vec![a,b]);
+    }
+
     #[test]
     fn only_value_space_tools_are_enabled() {
         assert!(supported(Tool::TrendLine));

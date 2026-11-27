@@ -108,7 +108,7 @@ pub struct ChartSettingsState {
 
 impl ChartSettingsState {
     pub fn set_current_drawings(&mut self, drawings: &[crate::model::Drawing]) {
-        if self.tab == Tab::Canvas { self.drawing_sets.set_current(drawings); }
+        self.drawing_sets.set_current(drawings);
     }
 
     pub fn refresh_drawing_sets(&mut self) { self.drawing_sets.refresh(); }

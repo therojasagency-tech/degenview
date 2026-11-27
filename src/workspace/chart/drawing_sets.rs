@@ -83,6 +83,27 @@ mod tests {
     }
 
     #[test]
+    fn pane_drawings_are_saved_separately_and_undo_never_touches_price_drawings() {
+        use crate::model::DrawingCommand;
+        let ctx = egui::Context::default();
+        let mut workspace = empty_workspace(24);
+        let chart_id = chart_with_drawings(&mut workspace, "BTCUSDT", &[1,2]);
+        let key = "@pane/v1/BINANCE:BTCUSDT/fixture/0".to_owned();
+        workspace.apply_pane_drawing_commands(chart_id,vec![(key.clone(),DrawingCommand::Add(rectangle(3,300)))]);
+        assert_eq!(drawing_ids(&workspace,chart_id),[1,2]);
+        assert_eq!(workspace.charts[0].stored_drawings().get(&key).len(),1);
+        let saved = workspace.persisted().charts.remove(0);
+        let json = serde_json::to_string(&saved).unwrap();
+        let decoded = serde_json::from_str(&json).unwrap();
+        let reopened = Chart::restored(decoded,workspace.timeframe,&ctx);
+        assert_eq!(reopened.drawings.iter().map(Drawing::id).collect::<Vec<_>>(),[1,2]);
+        assert_eq!(reopened.stored_drawings().get(&key)[0].id(),3);
+        workspace.undo(&ctx);
+        assert!(workspace.charts[0].stored_drawings().get(&key).is_empty());
+        assert_eq!(drawing_ids(&workspace,chart_id),[1,2]);
+    }
+
+    #[test]
     fn a_chart_keeps_a_set_of_drawings_for_each_market_it_shows() {
         let mut workspace = empty_workspace(1);
         let chart = chart_with_drawings(&mut workspace, "BTCUSDT", &[1, 2]);
