@@ -1,7 +1,7 @@
 //! Persistent value-space drawings. Reuses the price drawing model and painter,
 //! but never feeds a pane drawing into the price layer or the alert system.
 use super::{frame::{FrameData, FrameLayout}, pane_measure::{anchor, projection}, scripts::PaneGeometry, *};
-use crate::model::{Drawing, DrawingCommand, InstrumentId, Tool, MagnetMode};
+use crate::model::{Drawing, DrawingCommand, Geometry, InstrumentId, Tool, MagnetMode};
 
 #[derive(Default)]
 pub(super) struct State {
@@ -127,6 +127,25 @@ impl State {
         let pressed_pane = origin.and_then(pane_at);
         let hovered_pane = pointer.and_then(pane_at);
         let eraser = frame.cursor.caps().erases;
+        // Match the price pane: only the normal edit cursor can advertise a move/handle.
+        // Armed drawing tools, especially the ruler, must not inherit that cursor.
+        if frame.tool == Tool::Cursor && !eraser && frame.cursor.caps().edits_drawings
+            && response.hovered() && let Some((key,_,geometry)) = hovered_pane
+            && let Some(point) = pointer
+        {
+            let proj = projection(view,data,geometry,ui.ctx());
+            let drawings = sets.get(key);
+            let local = DrawingFrame::new(drawings,Tool::Cursor,None,frame.next_id).with_view(frame.timeframe,false);
+            let handle = self.selected.as_ref().filter(|(k,_)| k == key)
+                .and_then(|(_,id)| drawings.iter().find(|d| d.id() == *id && !d.locked() && d.is_visible(frame.timeframe)))
+                .is_some_and(|d| d.anchors().iter().any(|a| proj.point(*a).distance(point) <= 9.0));
+            let hit = DrawingLayer::default().hit_drawing_id(&local,point,&proj);
+            if self.movement.is_some() { ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing); }
+            else if handle { ui.ctx().set_cursor_icon(egui::CursorIcon::Grab); }
+            else if hit.is_some_and(|id| drawings.iter().any(|d| d.id() == id && !d.locked())) {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
+            }
+        }
         if eraser { self.movement = None; }
         if let Some(movement) = &mut self.movement {
             let Some((_,pine,geometry)) = panes.iter().find(|(key,_,_)| *key == movement.key) else {
@@ -241,9 +260,9 @@ impl State {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn paint(&self, painter: &egui::Painter, data: &FrameData, view: &View, geometry: &PaneGeometry, id: u64, timeframe: Option<Timeframe>, instances: &[PineInstance], frame: &DrawingFrame) {
-        let Some(sets) = frame.pane_sets else { return; };
-        let Some(key) = key(data,timeframe,instances,id) else { return; };
+    pub(super) fn paint(&self, painter: &egui::Painter, data: &FrameData, view: &View, geometry: &PaneGeometry, id: u64, pine: &VisualOutput, timeframe: Option<Timeframe>, instances: &[PineInstance], frame: &DrawingFrame) -> Vec<scripts::IndicatorTag> {
+        let Some(sets) = frame.pane_sets else { return Vec::new(); };
+        let Some(key) = key(data,timeframe,instances,id) else { return Vec::new(); };
         let mut drawings = sets.get(&key).to_vec();
         if let Some(movement) = self.movement.as_ref().filter(|m| m.key == key) {
             if let Some(drawing) = drawings.iter_mut().find(|d| d.id() == movement.original.id()) {
@@ -253,13 +272,28 @@ impl State {
         if let Some(draft) = self.draft.as_ref().filter(|d| d.key == key) {
             if let Some(d) = build(draft,0,frame) { drawings.push(d); }
         }
-        if drawings.is_empty() { return; }
+        if drawings.is_empty() { return Vec::new(); }
         let selected = self.selected.as_ref().filter(|(k,_)| k == &key).map(|(_,id)| *id);
         let local = DrawingFrame::new(&drawings,Tool::Cursor,selected,frame.next_id)
             .with_view(frame.timeframe,frame.hide_all);
         let proj = projection(view,data,geometry,painter.ctx());
         DrawingLayer::default().paint(painter,&proj,&local);
+        drawings.iter().filter(|d| d.is_visible(frame.timeframe))
+            .filter_map(|d| horizontal_tag(d, geometry, pine)).collect()
     }
+}
+
+/// Indicator lines carry values, not market prices; use the pane's own precision and format.
+fn horizontal_tag(drawing: &Drawing, geometry: &PaneGeometry, pine: &VisualOutput) -> Option<scripts::IndicatorTag> {
+    let style = drawing.style()?;
+    if !style.price_labels { return None; }
+    let at = match drawing.geometry()? {
+        Geometry::HorizontalLine { at } | Geometry::HorizontalRay { at } | Geometry::Crossline { at } => at,
+        _ => return None,
+    };
+    let y = geometry.scale.y(at.price);
+    if !y.is_finite() || !geometry.plot.y_range().contains(y) { return None; }
+    Some((y, series::color(style.stroke.color), scripts::format_value(pine,None,at.price,PriceFormat::AUTO)))
 }
 
 #[cfg(test)]

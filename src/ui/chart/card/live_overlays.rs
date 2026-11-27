@@ -102,6 +102,11 @@ impl Overlays for LiveOverlays<'_> {
 
     fn pane(&mut self, _painter: &egui::Painter, layout: &FrameLayout, slot: &PaneSlot) {
         let hovered = self.ui.rect_contains_pointer(slot.rect);
+        if let Some(action) = buttons::pane_script_controls(self.ui,
+            egui::Id::new(("pane-script-controls",self.chart_id,slot.id)),slot.rect,
+            layout.plot.right(),&layout.style,slot.id,hovered) {
+            self.overlay_action = Some(action);
+        }
         if let Some(action) = buttons::pane(
             self.ui,
             egui::Id::new(("pane-buttons", self.chart_id, slot.id)),
@@ -169,7 +174,7 @@ impl Overlays for LiveOverlays<'_> {
             view,
             overlays,
         );
-        self.overlay_action = card.action;
+        self.overlay_action = self.overlay_action.take().or(card.action);
         self.on_overlay_card = card.on_card;
         // The scale menu sits where the axes meet, which a chart with no plot to draw has not got.
         if layout.main_visible

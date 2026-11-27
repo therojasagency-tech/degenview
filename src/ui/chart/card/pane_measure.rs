@@ -55,9 +55,9 @@ impl State {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update(&mut self, ui: &egui::Ui, response: &Response, data: &FrameData, layout: &FrameLayout, view: &View, timeframe: Option<Timeframe>, frame: &mut DrawingFrame, blocked: bool) -> bool {
-        let (origin, pointer, down, pressed, focused, escape) = ui.input(|i| (
+        let (origin, pointer, down, pressed, released, focused, escape, modifiers) = ui.input(|i| (
             i.pointer.press_origin(), i.pointer.latest_pos(), i.pointer.primary_down(),
-            i.pointer.primary_pressed(), i.focused, i.key_pressed(egui::Key::Escape)
+            i.pointer.primary_pressed(), i.pointer.primary_released(), i.focused, i.key_pressed(egui::Key::Escape), i.modifiers
         ));
         if self.measure.as_ref().is_some_and(|m| !m.matches(data, timeframe)) {
             self.measure = None;
@@ -78,14 +78,27 @@ impl State {
                 .find_map(|((rect, (id, pine)), spec)| {
                     if spec.collapsed || *id == PREVIEW_INSTANCE { return None; }
                     let geometry = PaneGeometry::new(*rect, layout.plot, pine, shown, tail)?;
-                    geometry.plot.contains(point).then_some((*id, &***pine, geometry))
+                    let on_controls = buttons::pane_fits(*rect, layout.plot.right())
+                        && buttons::pane_rects(*rect, layout.plot.right()).0.contains(point)
+                        || buttons::pane_script_controls_fit(*rect, layout.plot.right())
+                        && buttons::pane_script_rects(*rect, layout.plot.right()).0.contains(point);
+                    (geometry.plot.contains(point) && !on_controls).then_some((*id, &***pine, geometry))
                 })
         };
         let active = self.measure.as_ref().is_some_and(|m| m.dragging);
-        let starts = frame.tool == Tool::Ruler && response.drag_started_by(primary);
+        let magnet = if modifiers.shift { MagnetMode::Off } else { frame.magnet.inverted(modifiers.command) };
+        let owns_pointer = response.hovered() || response.is_pointer_button_down_on();
+        let armed = frame.tool == Tool::Ruler;
+        let hover_pane = pointer.and_then(pane_at).is_some();
+        if armed && (active || (owns_pointer && hover_pane)) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
+        // Own the gesture from the initial press, not from egui's drag threshold. Existing
+        // drawings and chart navigation must never get the first chance to claim the ruler.
+        let starts = armed && !active && ((pressed && owns_pointer) || response.drag_started_by(primary));
         if starts && let Some((pane, pine, geometry)) = origin.and_then(pane_at) {
             let proj = projection(view, data, &geometry, ui.ctx());
-            let a = anchor(&proj, origin.unwrap(), pine, data.bars, frame.magnet);
+            let a = anchor(&proj, origin.unwrap(), pine, data.bars, magnet);
             self.measure = Some(Measure { source: data.source, symbol: data.symbol.to_owned(), timeframe, pane, a, b: a, dragging: true });
         } else if !active && pressed && response.hovered() {
             // A completed measurement is kept until the next click, just like the price ruler.
@@ -102,9 +115,9 @@ impl State {
                 if let Some(geometry) = PaneGeometry::new(*rect, layout.plot, pine, shown, tail) {
                     let proj = projection(view, data, &geometry, ui.ctx());
                     if let Some(point) = pointer {
-                        m.b = anchor(&proj, point, pine, data.bars, frame.magnet);
+                        m.b = anchor(&proj, point, pine, data.bars, magnet);
                     }
-                    if response.drag_stopped_by(primary) {
+                    if released || response.drag_stopped_by(primary) {
                         m.dragging = false;
                         frame.put_down |= !frame.keep_drawing;
                     } else if !down {
@@ -117,7 +130,7 @@ impl State {
             return true;
         }
         // Claim a ruler press over a pane before the drag threshold, preventing chart navigation.
-        frame.tool == Tool::Ruler && down && origin.and_then(pane_at).is_some() && response.hovered()
+        armed && ((owns_pointer && hover_pane) || (down && origin.and_then(pane_at).is_some()))
     }
 
     #[allow(clippy::too_many_arguments)]

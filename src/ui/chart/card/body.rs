@@ -206,6 +206,9 @@ impl ChartCard {
             && let Some(view) = &view
         {
             if replay.selecting || held || pane_claim {
+                if pane_claim && drawing.tool == crate::model::Tool::Ruler && self.layer.claims_drag() {
+                    self.layer.abandon();
+                }
                 self.layer.clear_hover();
             } else {
                 self.layer.update(
@@ -264,6 +267,9 @@ impl ChartCard {
             response,
         };
         drawing.escape_consumed |= self.handle_input(ui, &navigation);
+        if pane_claim && drawing.tool == crate::model::Tool::Ruler {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        }
         self.handle_axis_double_click(response, &regions);
         regions
     }

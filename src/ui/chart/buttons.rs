@@ -192,6 +192,21 @@ pub fn pane_fits(pane: Rect, right: f32) -> bool {
     pane.height() >= BUTTON + 2.0 * PADDING && right - pane.left() >= group_width(5) + 80.0
 }
 
+/// Local indicator controls sit immediately left of the pane management group.
+pub fn pane_script_rects(pane: Rect, right: f32) -> (Rect, [Rect; 3]) {
+    let (management, _) = pane_rects(pane, right);
+    let size = vec2(group_width(3), BUTTON + 2.0 * PADDING);
+    let pill = Rect::from_min_size(Pos2::new(management.left() - 4.0 - size.x, management.top()), size);
+    let rects = std::array::from_fn(|index| Rect::from_min_size(
+        Pos2::new(pill.left()+PADDING+index as f32*(BUTTON+GAP),pill.top()+PADDING),
+        Vec2::splat(BUTTON)));
+    (pill, rects)
+}
+
+pub fn pane_script_controls_fit(pane: Rect, right: f32) -> bool {
+    pane_fits(pane,right) && pane_script_rects(pane,right).0.left() - pane.left() >= 80.0
+}
+
 // MARK: Drawing
 
 /// How visible a group is this frame: animated towards the wanted state, so a group fades rather
@@ -335,6 +350,29 @@ pub fn pane(
     clicked
 }
 
+/// Edit the actual instance in this pane, using the same commands as its header chip.
+pub fn pane_script_controls(ui: &mut Ui, id: Id, pane: Rect, right: f32, style: &CanvasStyle, instance: u64, hovered: bool) -> Option<super::indicator_strip::Action> {
+    use super::indicator_strip::{Action, Kind};
+    if !pane_script_controls_fit(pane,right) { return None; }
+    let (pill, rects) = pane_script_rects(pane,right);
+    let opacity = fade(ui,id,style.pane_buttons,hovered || ui.rect_contains_pointer(pill.expand(4.0)));
+    if opacity <= 0.01 { return None; }
+    paint_group(ui,pill,opacity);
+    let actions = [
+        (Icon::Eye, tr!("Hide"), Action::ToggleVisible(Kind::Script(instance))),
+        (Icon::Sliders, tr!("Settings…"), Action::ConfigureScript(instance,pill)),
+        (Icon::DocText, tr!("Pine logs"), Action::OpenPineLogs(instance)),
+    ];
+    let mut clicked = None;
+    for (index, ((icon,label,action),rect)) in actions.into_iter().zip(rects).enumerate() {
+        let response = ui.interact(rect,id.with(index),Sense::click());
+        let response = accessibility::label(response,label).on_hover_text(label).on_hover_cursor(CursorIcon::PointingHand);
+        paint_button(ui,rect,icon,response.hovered(),true,opacity);
+        if response.clicked() && opacity >= CLICKABLE { clicked = Some(action); }
+    }
+    clicked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,6 +409,15 @@ mod tests {
             Pos2::ZERO,
             Vec2::ZERO
         )));
+    }
+
+    #[test]
+    fn local_indicator_controls_do_not_overlap_pane_management() {
+        let pane = Rect::from_min_size(Pos2::ZERO,vec2(600.0,150.0));
+        assert!(pane_script_controls_fit(pane,550.0));
+        let (local,rects) = pane_script_rects(pane,550.0);
+        assert!(local.right() < pane_rects(pane,550.0).0.left());
+        assert!(rects.iter().all(|rect| local.contains_rect(*rect)));
     }
 
     #[test]

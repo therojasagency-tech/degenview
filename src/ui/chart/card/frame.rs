@@ -611,19 +611,19 @@ impl ChartCard {
                     pointer,
                 );
                 tooltip = tooltip.or(pane_tooltip);
-                if !drawing.hide_all {
-                    self.pane_drawings.paint(painter, data, view, &geometry, *id, self.timeframe, &self.instances, drawing);
-                }
+                let mut tags = if !drawing.hide_all {
+                    self.pane_drawings.paint(painter, data, view, &geometry, *id, pine, self.timeframe, &self.instances, drawing)
+                } else { Vec::new() };
                 if decor.time_lock && !drawing.hide_all {
                     self.pane_measure.paint(painter, data, view, &geometry, *id, pine, self.timeframe);
                 }
                 let active_y = pane_pointer.filter(|pos| geometry.plot.contains(*pos)).map(|pos| pos.y);
                 if style.indicator_readouts.axis_values {
-                    let avoid = active_y.filter(|_| self.cursor.caps().axis_tags && style.indicator_readouts.crosshair_tags)
-                        .map(|y| TagBand { top: y-style.tag_half_height(), bottom: y+style.tag_half_height() });
-                    scripts::paint_indicator_tags(painter, geometry.plot, pane_rect.right(), style,
-                        scripts::last_tags(pine, PriceFormat::AUTO, &geometry.scale, geometry.plot), avoid.as_slice());
+                    tags.extend(scripts::last_tags(pine, PriceFormat::AUTO, &geometry.scale, geometry.plot));
                 }
+                let avoid = active_y.filter(|_| self.cursor.caps().axis_tags && style.indicator_readouts.crosshair_tags)
+                    .map(|y| TagBand { top: y-style.tag_half_height(), bottom: y+style.tag_half_height() });
+                scripts::paint_indicator_tags(painter, geometry.plot, pane_rect.right(), style, tags, avoid.as_slice());
                 if let Some(y) = active_y { active_pane = Some((geometry, &***pine, y)); }
             }
             // The price axis' edge runs on through the pane.
@@ -636,7 +636,9 @@ impl ChartCard {
             let name = self.instances.iter().find(|instance| instance.id == *id)
                 .map_or("", |instance| instance.name.as_str());
             if pane_rect.height() >= 16.0 {
-                let right = if *id != PREVIEW_INSTANCE && buttons::pane_fits(*pane_rect, plot.right()) {
+                let right = if *id != PREVIEW_INSTANCE && buttons::pane_script_controls_fit(*pane_rect, plot.right()) {
+                    buttons::pane_script_rects(*pane_rect, plot.right()).0.left() - 4.0
+                } else if *id != PREVIEW_INSTANCE && buttons::pane_fits(*pane_rect, plot.right()) {
                     buttons::pane_rects(*pane_rect, plot.right()).0.left() - 4.0
                 } else { plot.right() };
                 let area = Rect::from_min_max(pane_rect.min,

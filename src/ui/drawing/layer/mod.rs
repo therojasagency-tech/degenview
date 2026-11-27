@@ -693,7 +693,8 @@ impl DrawingLayer {
             self.abort();
         }
         self.last_frame = frame_nr;
-        if matches!(&self.gesture, Some(Gesture::Draft(draft)) if draft.tool != frame.tool) {
+        if matches!(&self.gesture, Some(Gesture::Draft(draft)) if draft.tool != frame.tool)
+            || (frame.tool != Tool::Cursor && matches!(&self.gesture, Some(Gesture::Edit(_)))) {
             self.abort();
         }
         if frame.erases() {
