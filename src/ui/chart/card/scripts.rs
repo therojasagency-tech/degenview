@@ -13,6 +13,10 @@ impl ChartCard {
 
     /// Replaces every instance (restoring a saved chart).
     pub fn set_pine_instances(&mut self, instances: Vec<PineInstance>) {
+        self.pane_ids.retain(|id| instances.iter().any(|instance| instance.id == *id));
+        if self.maximized_pane.is_some_and(|id| !instances.iter().any(|instance| instance.id == id)) {
+            self.maximized_pane = None;
+        }
         self.instances = instances;
         self.pine.reset();
     }

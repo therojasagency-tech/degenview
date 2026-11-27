@@ -166,6 +166,68 @@ mod tests {
     use crate::workspace::test_support::empty_workspace;
 
     #[test]
+    fn indicator_template_changes_only_indicators_and_can_be_undone() {
+        use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
+        use crate::model::pine::instance::PineInstance;
+        use crate::workspace::test_support::{chart_with_drawings, drawing_ids};
+        let mut workspace = empty_workspace(21);
+        let chart_id = chart_with_drawings(&mut workspace, "BTCUSDT", &[1, 2]);
+        let other_id = chart_with_drawings(&mut workspace, "ETHUSDT", &[3]);
+        let old_id = workspace.charts[0].chart.add_pine_instance(None, "Old", "indicator(\"Old\")\nplot(close)");
+        let before = workspace.charts[0].chart.pine_instances().to_vec();
+        let appearance = workspace.charts[0].chart.appearance();
+        let viewport = workspace.charts[0].chart.saved_viewport();
+        let mut script = PineInstance::new(old_id, None, "New", "indicator(\"New\")\nplot(close)");
+        script.pane.share = Some(0.25);
+        let mut config = workspace.charts[0].indicators;
+        config.show_ema = !config.show_ema;
+        let template = IndicatorTemplate { id: 1, name: "New".into(), indicators: config, scripts: vec![script.clone()] };
+        crate::lock::lock(&workspace.store).set_setting(KEY, &vec![template]).unwrap();
+
+        assert_eq!(workspace.apply_indicator_template(chart_id, 1).unwrap(), "New");
+        let chart = &workspace.charts[0];
+        assert_eq!(chart.symbol, "BTCUSDT");
+        assert_eq!(chart.chart.appearance(), appearance);
+        assert_eq!(chart.chart.saved_viewport(), viewport);
+        assert_eq!(chart.indicators, config);
+        assert_eq!(chart.chart.pine_instances()[0].pane.share, Some(0.25));
+        assert_ne!(chart.chart.pine_instances()[0].id, old_id);
+        assert_eq!(drawing_ids(&workspace, chart_id), [1, 2]);
+        assert_eq!(drawing_ids(&workspace, other_id), [3]);
+        assert!(workspace.charts[1].chart.pine_instances().is_empty());
+        workspace.undo(&egui::Context::default());
+        assert_eq!(workspace.charts[0].chart.pine_instances(), before.as_slice());
+        assert_eq!(drawing_ids(&workspace, chart_id), [1, 2]);
+    }
+
+    #[test]
+    fn a_linked_pine_alert_prevents_replacing_its_instance() {
+        use crate::model::alert::pine::{PineAlertState, PineAlertSubscription};
+        use crate::model::chart::indicator_templates::{IndicatorTemplate, KEY};
+        use crate::workspace::test_support::chart_with_drawings;
+        let mut workspace = empty_workspace(22);
+        let chart_id = chart_with_drawings(&mut workspace, "BTCUSDT", &[1]);
+        let instance_id = workspace.charts[0].chart.add_pine_instance(None, "Old", "indicator(\"Old\")\nplot(close)");
+        let before = workspace.charts[0].chart.pine_instances().to_vec();
+        {
+            let store = crate::lock::lock(&workspace.store);
+            store.set_setting(KEY, &vec![IndicatorTemplate {
+                id: 1, name: "Empty".into(), indicators: Default::default(), scripts: Vec::new()
+            }]).unwrap();
+            store.replace_pine_subscriptions(&[PineAlertSubscription {
+                id: 1, chart_id, instance_id: Some(instance_id), script_id: None,
+                script_name: "Old".into(), source: String::new(), inputs: Default::default(),
+                symbol_key: "BINANCE:BTCUSDT".into(), timeframe: "1d".into(), source_hash: "test".into(),
+                note: String::new(), state: PineAlertState::Active, created_at_ms: 0,
+                webhook_endpoint_ids: Vec::new(),
+            }]).unwrap();
+        }
+        assert!(workspace.apply_indicator_template(chart_id, 1).is_err());
+        assert_eq!(workspace.charts[0].chart.pine_instances(), before.as_slice());
+        assert_eq!(crate::lock::lock(&workspace.store).pine_subscriptions()[0].instance_id, Some(instance_id));
+    }
+
+    #[test]
     #[allow(clippy::field_reassign_with_default)]
     fn apply_to_all_restyles_the_other_charts_of_this_workspace_only() {
         use crate::model::chart::canvas::BackgroundMode;
