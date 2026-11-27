@@ -1,0 +1,1 @@
+Retain last valid quote on incomplete, invalid or rejected refreshes; mark old data stale instead of blanking it. Keep REST polling off the subscription/tick/repaint loop. Cache OANDA daily references within a trading date, with periodic refresh and rollover invalidation. No change to chart candle data.

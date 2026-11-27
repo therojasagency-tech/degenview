@@ -84,12 +84,14 @@ pub fn connect_account(environment: String, token: String, account: String) -> R
     OandaStore::shared().save(&OandaCredential { environment, account, token: cfg.token })
         .map_err(|_| ProviderError::other("Could not save OANDA credentials securely."))?;
     if let Ok(mut cache) = CATALOG.lock() { *cache = None; }
+    if let Ok(mut cache) = DAILY_REFERENCE_CACHE.lock() { *cache = None; }
     Ok(())
 }
 
 pub fn disconnect_account() -> Result<(), ProviderError> {
     OandaStore::shared().remove().map_err(|_| ProviderError::other("Could not remove saved OANDA credentials."))?;
     if let Ok(mut cache) = CATALOG.lock() { *cache = None; }
+    if let Ok(mut cache) = DAILY_REFERENCE_CACHE.lock() { *cache = None; }
     Ok(())
 }
 
@@ -234,6 +236,42 @@ fn decode_quotes(data: Pricing, requested: &[String], refs: &HashMap<String, f64
     }
     result
 }
+// The reference close stays fixed within a trading day. Refresh at most once per
+// minute per instrument, and keep the last successful reference on a transient
+// failure. Never carry it across the New York daily rollover or account changes.
+#[derive(Default)]
+struct DailyReferenceCache {
+    host: &'static str,
+    account: String,
+    day: i64,
+    rows: HashMap<String, (f64, Instant)>,
+}
+static DAILY_REFERENCE_CACHE: Mutex<Option<DailyReferenceCache>> = Mutex::new(None);
+fn reference_day(ms: i64) -> i64 {
+    crate::model::market::session::MarketClock::ForexNy17.trading_day(ms)
+}
+fn cached_daily_references(cfg: &Config, requested: &[String], day: i64) -> HashMap<String, f64> {
+    let missing = {
+        let Ok(mut held) = DAILY_REFERENCE_CACHE.lock() else { return HashMap::new(); };
+        if held.as_ref().is_none_or(|c| c.host != cfg.host || c.account != cfg.account || c.day != day) {
+            *held = Some(DailyReferenceCache { host: cfg.host, account: cfg.account.clone(), day, rows: HashMap::new() });
+        }
+        let cache = held.as_ref().unwrap();
+        requested.iter().filter(|s| cache.rows.get(*s).is_none_or(|(_, when)| when.elapsed() >= Duration::from_secs(60))).cloned().collect::<Vec<_>>()
+    };
+    let updated = if missing.is_empty() { HashMap::new() } else {
+        let specs = missing.iter().map(|s| encode_component(&format!("{s}:D:M"))).collect::<Vec<_>>().join("%2C");
+        get::<LatestCandles>(cfg, &format!("/candles/latest?candleSpecifications={specs}&dailyAlignment=17&alignmentTimezone=America%2FNew_York"))
+            .map(daily_references).unwrap_or_default()
+    };
+    let Ok(mut held) = DAILY_REFERENCE_CACHE.lock() else { return HashMap::new(); };
+    let Some(cache) = held.as_mut().filter(|c| c.host == cfg.host && c.account == cfg.account && c.day == day) else { return HashMap::new(); };
+    // A request spanning the rollover must not be cached against the earlier day.
+    if reference_day(crate::clock::now_ms()) != day { return HashMap::new(); }
+    for (symbol, price) in updated { cache.rows.insert(symbol, (price, Instant::now())); }
+    requested.iter().filter_map(|s| cache.rows.get(s).map(|(price, _)| (s.clone(), *price))).collect()
+}
+
 pub fn watchlist_quotes(symbols: &[String]) -> Result<HashMap<String, SourceQuote>, ProviderError> {
     if symbols.is_empty() { return Ok(HashMap::new()); }
     let cfg = config()?;
@@ -242,10 +280,16 @@ pub fn watchlist_quotes(symbols: &[String]) -> Result<HashMap<String, SourceQuot
     if requested.is_empty() { return Ok(HashMap::new()); }
     let list = requested.iter().map(|s| encode_component(s)).collect::<Vec<_>>().join("%2C");
     let prices: Pricing = get(&cfg, &format!("/pricing?instruments={list}"))?;
-    let specs = requested.iter().map(|s| encode_component(&format!("{s}:D:M"))).collect::<Vec<_>>().join("%2C");
-    let daily = get::<LatestCandles>(&cfg, &format!("/candles/latest?candleSpecifications={specs}&dailyAlignment=17&alignmentTimezone=America%2FNew_York"))
-        .map(daily_references).unwrap_or_default();
-    Ok(decode_quotes(prices, &requested, &daily))
+    let day = reference_day(crate::clock::now_ms());
+    let daily = cached_daily_references(&cfg, &requested, day);
+    let mut decoded = decode_quotes(prices, &requested, &daily);
+    // Do not compute a change using a quote from the preceding trading date.
+    for quote in decoded.values_mut() {
+        if quote.timestamp_ms.is_some_and(|ms| reference_day(ms) != day) {
+            quote.previous_day_price = None;
+        }
+    }
+    Ok(decoded)
 }
 
 impl MarketSource for Oanda {

@@ -74,7 +74,26 @@ impl WatchlistQuoteCoordinator {
         {
             let (engine, book, shutdown) =
                 (Arc::clone(&engine), book.clone(), Arc::clone(&shutdown));
-            std::thread::spawn(move || run(&engine, &book, provider.as_ref(), &repaint, &shutdown));
+            let (poll_engine, poll_shutdown, poll_provider) =
+                (Arc::clone(&engine), Arc::clone(&shutdown), Arc::clone(&provider));
+            // HTTP calls can block for tens of seconds. Never block tick draining,
+            // sidebar lease renewal or repaint notifications behind them.
+            std::thread::spawn(move || {
+                let mut last_round = i64::MIN / 2;
+                while !poll_shutdown.load(Ordering::Acquire) {
+                    let now = now_ms();
+                    let (interval, active) = {
+                        let guard = lock(&poll_engine);
+                        (guard.poll_interval_ms(), guard.has_subscriptions())
+                    };
+                    if active && now - last_round >= interval {
+                        last_round = now;
+                        engine::poll_regular(&poll_engine, poll_provider.as_ref(), &now_ms);
+                    }
+                    std::thread::sleep(TICK);
+                }
+            });
+            std::thread::spawn(move || run(&engine, &book, &repaint, &shutdown));
         }
         Self {
             inner: Arc::new(CoordinatorInner { engine, shutdown }),
@@ -118,25 +137,21 @@ impl Drop for CoordinatorInner {
 fn run(
     engine: &Mutex<Engine>,
     book: &WatchlistQuoteBook,
-    provider: &dyn QuoteProvider,
     repaint: &Arc<dyn Fn() + Send + Sync>,
     shutdown: &AtomicBool,
 ) {
     let (sender, receiver): (_, Receiver<StreamTick>) = mpsc::channel();
     let mut sockets: HashMap<DataSource, QuoteSocket> = HashMap::new();
-    let mut last_round = i64::MIN / 2;
     let mut seen_revision = book.revision();
 
     while !shutdown.load(Ordering::Acquire) {
         std::thread::sleep(TICK);
         let now = now_ms();
-        let (streams, interval, active, renew) = {
+        let (streams, renew) = {
             let mut guard = lock(engine);
             guard.expire_leases(now);
             (
                 DataSource::QUOTE_STREAMS.map(|source| (source, guard.stream_products(source))),
-                guard.poll_interval_ms(),
-                guard.has_subscriptions(),
                 guard.lease_aging(now),
             )
         };
@@ -161,11 +176,6 @@ fn run(
         let ticks: Vec<StreamTick> = receiver.try_iter().collect();
         if !ticks.is_empty() {
             lock(engine).receive_ticks(ticks, now);
-        }
-
-        if active && now - last_round >= interval {
-            last_round = now;
-            engine::poll_regular(engine, provider, &now_ms);
         }
 
         let revision = book.revision();

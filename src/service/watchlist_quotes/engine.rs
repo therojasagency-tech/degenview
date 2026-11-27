@@ -393,6 +393,8 @@ impl Engine {
     /// long session that imports, deletes and browses many markets only ever grows, and a
     /// market that returns hours later would show an hours-old price at once.
     fn prune(&mut self, wanted: &BTreeMap<String, InstrumentId>, now: i64) {
+        // A renewed subscription cancels idle eviction immediately, even between sweeps.
+        for key in wanted.keys() { self.idle_since.remove(key); }
         // Reconciling and planning are frequent; forgetting is not urgent.
         if now - self.last_prune_ms < PRUNE_EVERY_MS {
             return;
@@ -620,6 +622,16 @@ impl Engine {
 
         for (key, request) in &planned.requests {
             if let Some(quote) = outcome.quotes.get(&request.symbol) {
+                if !quote.price.is_finite() || (source == DataSource::Oanda && quote.price <= 0.0) {
+                    updates.insert(key.clone(), self.fallback(key, Some(tr!("The provider returned no quote").to_owned())));
+                    continue;
+                }
+                // A delayed REST response must not rewind a newer OANDA quote.
+                if source == DataSource::Oanda
+                    && let Some(previous) = self.known.get(key)
+                    && let (Some(old), Some(new)) = (previous.timestamp_ms, quote.timestamp_ms)
+                    && new < old
+                { continue; }
                 let quote = self.with_stream_reference(source, key, *quote, now);
                 updates.insert(
                     key.clone(),
@@ -632,7 +644,11 @@ impl Engine {
                     key.clone(),
                     match failure {
                         QuoteFailure::CredentialsMissing => {
-                            WatchlistQuote::unsupported(Some(failure.message()))
+                            if self.known.get(key).is_some_and(|q| q.last.is_some()) {
+                                self.fallback(key, Some(failure.message()))
+                            } else {
+                                WatchlistQuote::unsupported(Some(failure.message()))
+                            }
                         }
                         _ => self.fallback(key, Some(failure.message())),
                     },
@@ -642,11 +658,7 @@ impl Engine {
                     .insert(key.clone(), now + self.config.rejected_retry_ms);
                 updates.insert(
                     key.clone(),
-                    WatchlistQuote {
-                        freshness: Freshness::Unavailable,
-                        note: Some(tr!("The provider doesn't know this market").to_owned()),
-                        ..WatchlistQuote::default()
-                    },
+                    self.fallback(key, Some(tr!("The provider doesn't know this market").to_owned())),
                 );
             } else {
                 updates.insert(
@@ -688,7 +700,10 @@ impl Engine {
     /// The last known price, marked stale; or an unavailable quote if there never was one.
     fn fallback(&self, key: &str, note: Option<String>) -> WatchlistQuote {
         match self.known.get(key) {
-            Some(last) if last.last.is_some() => last.with_freshness(Freshness::Stale),
+            Some(last) if last.last.is_some() => WatchlistQuote {
+                note: note.or_else(|| last.note.clone()),
+                ..last.with_freshness(Freshness::Stale)
+            },
             _ => WatchlistQuote {
                 freshness: Freshness::Unavailable,
                 note,
@@ -1112,6 +1127,34 @@ mod tests {
     }
 
     const T0: i64 = 1_700_000_000_000;
+
+    #[test]
+    fn oanda_retains_last_valid_quote_on_invalid_missing_or_rejected_refresh() {
+        let (engine, book, _) = setup();
+        let instrument = id(DataSource::Oanda, "EUR_USD");
+        let key = instrument.key();
+        let planned = Planned { source: DataSource::Oanda, requests: vec![(key.clone(), QuoteRequest { symbol: "EUR_USD".into(), chain: None })] };
+        let good = SourceQuote { price: 1.10, previous_day_price: Some(1.09), timestamp_ms: Some(T0), ..SourceQuote::default() };
+        let mut engine = lock(&engine);
+        engine.apply(&planned, &Outcome::from_quotes(HashMap::from([("EUR_USD".into(), good)])), T0);
+        for outcome in [
+            Outcome::default(),
+            Outcome::from_quotes(HashMap::from([("EUR_USD".into(), SourceQuote { price: f64::NAN, ..good })])),
+            Outcome::failing(vec!["EUR_USD".into()], QuoteFailure::CredentialsMissing),
+            Outcome { quotes: HashMap::from([("GBP_USD".into(), good)]), rejected: HashSet::from(["EUR_USD".into()]), ..Outcome::default() },
+        ] {
+            engine.apply(&planned, &outcome, T0 + 10_000);
+            let quote = book.get(&instrument).unwrap();
+            assert_eq!(quote.last, Some(1.10));
+            assert!(quote.change_percent.is_some());
+            assert_eq!(quote.freshness, Freshness::Stale);
+            assert_eq!(quote.timestamp_ms, Some(T0));
+        }
+        let next = SourceQuote { price: 1.11, timestamp_ms: Some(T0+20_000), ..good };
+        engine.apply(&planned, &Outcome::from_quotes(HashMap::from([("EUR_USD".into(), next)])), T0+20_000);
+        assert_eq!(book.get(&instrument).unwrap().last, Some(1.11));
+        assert_eq!(book.get(&instrument).unwrap().freshness, Freshness::Live);
+    }
 
     #[test]
     fn one_batched_request_per_source_merging_every_window_and_list() {
