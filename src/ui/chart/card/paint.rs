@@ -473,21 +473,35 @@ impl ChartCard {
         style: &CanvasStyle,
     ) {
         let y = rect.bottom() - style.time_axis_height() / 2.0;
+        let span = candles.first().zip(candles.last())
+            .map_or(0, |(first, last)| last.open_time.saturating_sub(first.open_time));
+        let mut previous_right = f32::NEG_INFINITY;
         for index in ticks {
             let Some(candle) = candles.get(*index) else {
                 continue;
             };
             let label = self.time_text(candle.open_time);
+            const DAY_MS: i64 = 86_400_000;
+            let label = if span >= 8 * 365 * DAY_MS {
+                &label[..4]
+            } else if span >= 365 * DAY_MS {
+                &label[..7]
+            } else if span >= 90 * DAY_MS || self.timeframe.is_some_and(|tf| tf.nominal_ms() >= DAY_MS) {
+                &label[..10]
+            } else {
+                &label[5..]
+            };
             let x = x_for(*index);
             // A label that would hang over the plot's right edge waits for the chart to move, as a
             // price label does at the plot's top and bottom: it would run into the price axis and
             // the scale button in the corner. So does one cut by the left edge.
             let galley =
-                painter.layout_no_wrap(label[5..].to_owned(), style.time_font(), style.text_color);
+                painter.layout_no_wrap(label.to_owned(), style.time_font(), style.text_color);
             let half = galley.size().x / 2.0;
-            if x + half > plot_right || x - half < rect.left() {
+            if x + half > plot_right || x - half < rect.left() || x - half < previous_right + 12.0 {
                 continue;
             }
+            previous_right = x + half;
             let at = Pos2::new(x, y) - galley.size() / 2.0;
             painter.galley(at, galley, style.text_color);
         }

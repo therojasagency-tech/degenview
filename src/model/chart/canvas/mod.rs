@@ -524,8 +524,8 @@ const TIME_LABEL_GAP: f32 = 16.0;
 /// dozen bars across the plot), or further apart when labels `label_width` wide would not leave
 /// a gap between them: a large axis font, or a picture's larger text.
 pub fn time_tick_step(slot_width: f32, label_width: f32) -> usize {
-    let slot = if slot_width.is_finite() {
-        slot_width.max(1.0)
+    let slot = if slot_width.is_finite() && slot_width > 0.0 {
+        slot_width
     } else {
         1.0
     };

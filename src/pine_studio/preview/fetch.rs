@@ -75,7 +75,7 @@ impl PreviewState {
         self.save(RECENTS_KEY, &self.recents);
     }
 
-    pub(in crate::pine_studio) fn inherit_market(&mut self, instrument: &crate::model::market::instrument::InstrumentId, timeframe: Timeframe) {
+    pub(in crate::pine_studio) fn inherit_market(&mut self, instrument: &crate::model::InstrumentId, timeframe: Timeframe) {
         if PreviewMarket::is_supported(instrument.source) {
             self.select_market(PreviewMarket { ticker: instrument.symbol.clone(), source: instrument.source });
             self.select_timeframe(timeframe);

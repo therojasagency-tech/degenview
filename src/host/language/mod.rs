@@ -75,10 +75,13 @@ fn apply(preference: Preference) {
     let forced = std::env::var(FORCE_ENV)
         .ok()
         .and_then(|tag| Locale::from_tag(&tag));
+    // Unit tests use a stable system language regardless of the host OS. Explicit
+    // locale preferences and the run override still go through the real resolver.
+    let system = if cfg!(test) { vec!["en".to_owned()] } else { language::preferred() };
     let locale = i18n::resolve(
         preference,
         forced,
-        &language::preferred(),
+        &system,
         &Locale::selectable(),
     );
     i18n::set(preference, locale);

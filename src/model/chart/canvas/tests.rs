@@ -394,6 +394,17 @@ fn wide_time_labels_are_spaced_so_they_never_touch() {
     assert_eq!(time_tick_step(slot, f32::NAN), 13);
 }
 
+#[test]
+fn time_ticks_keep_their_pixel_spacing_when_bars_are_subpixel() {
+    for slot in [0.5_f32, 0.2, 0.05] {
+        let step = time_tick_step(slot, 116.0);
+        assert!(step as f32 * slot >= 132.0 - 0.001);
+        let ticks = time_ticks(0, 5000, slot, 116.0);
+        assert!(ticks.windows(2).all(|pair| (pair[1] - pair[0]) as f32 * slot >= 132.0 - 0.001));
+    }
+    assert_eq!(time_tick_step(0.0, 60.0), 100);
+}
+
 // MARK: Window
 
 #[test]

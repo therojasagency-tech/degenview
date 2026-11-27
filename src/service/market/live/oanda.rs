@@ -20,7 +20,7 @@ const MAX_STREAMS: usize = 4;
 struct Slot;
 impl Slot {
     fn acquire() -> Option<Self> {
-        ACTIVE.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| (n < MAX_STREAMS).then_some(n+1)).ok()?;
+        ACTIVE.try_update(Ordering::AcqRel, Ordering::Acquire, |n| (n < MAX_STREAMS).then_some(n+1)).ok()?;
         Some(Self)
     }
 }
