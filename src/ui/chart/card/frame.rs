@@ -611,6 +611,9 @@ impl ChartCard {
                     pointer,
                 );
                 tooltip = tooltip.or(pane_tooltip);
+                if decor.time_lock && !drawing.hide_all {
+                    self.pane_measure.paint(painter, data, view, &geometry, *id, pine, self.timeframe);
+                }
                 let active_y = pane_pointer.filter(|pos| geometry.plot.contains(*pos)).map(|pos| pos.y);
                 if style.indicator_readouts.axis_values {
                     let avoid = active_y.filter(|_| self.cursor.caps().axis_tags && style.indicator_readouts.crosshair_tags)

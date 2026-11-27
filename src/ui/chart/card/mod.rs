@@ -306,6 +306,7 @@ pub struct ChartCard {
     /// scale must reach. Set each frame before the view is built.
     script_extent: OverlayExtent,
     layer: DrawingLayer,
+    pane_measure: pane_measure::State,
     /// Paper-trading inputs and outputs for this card; the workspace fills and drains it.
     pub paper: PaperCardState,
     /// Live trading at a broker: the header pills and the lines of working orders.
@@ -435,6 +436,7 @@ impl Default for ChartCard {
             probe: None,
             script_extent: OverlayExtent::default(),
             layer: DrawingLayer::default(),
+            pane_measure: Default::default(),
             paper: PaperCardState::default(),
             live: Default::default(),
             instances: Vec::new(),
@@ -811,6 +813,7 @@ mod overlay_card;
 mod overlays;
 mod paint;
 mod pane_divider;
+mod pane_measure;
 mod price_scale;
 mod scripts;
 mod snapshot;

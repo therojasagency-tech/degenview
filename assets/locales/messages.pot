@@ -21871,3 +21871,7 @@ msgstr ""
 #: src/workspace/chart/settings.rs
 msgid "No more indicator instance identifiers are available."
 msgstr ""
+
+#: src/ui/chart/card/pane_measure.rs
+msgid "Δ {value} · {bars} bars · {duration}"
+msgstr ""

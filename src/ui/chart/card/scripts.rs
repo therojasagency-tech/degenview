@@ -17,6 +17,7 @@ impl ChartCard {
         if self.maximized_pane.is_some_and(|id| !instances.iter().any(|instance| instance.id == id)) {
             self.maximized_pane = None;
         }
+        self.pane_measure = Default::default();
         self.instances = instances;
         self.pine.reset();
     }
@@ -40,6 +41,7 @@ impl ChartCard {
     }
 
     pub fn remove_pine_instance(&mut self, id: u64) {
+        self.pane_measure.forget(id);
         self.instances.retain(|instance| instance.id != id);
         self.pine.remove(id);
     }

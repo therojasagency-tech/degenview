@@ -196,10 +196,14 @@ impl ChartCard {
         // or picked.
         let held = self.pointer_is_held(layout.main_visible, replay.selecting);
         let zooming = self.zoom_is_live(layout.main_visible, replay.selecting);
+        let pane_claim = if let Some(view) = &view {
+            self.pane_measure.update(ui, response, data, layout, view, self.timeframe, drawing,
+                replay.selecting || held || zooming)
+        } else { false };
         if layout.main_visible
             && let Some(view) = &view
         {
-            if replay.selecting || held {
+            if replay.selecting || held || pane_claim {
                 self.layer.clear_hover();
             } else {
                 self.layer.update(
@@ -249,7 +253,7 @@ impl ChartCard {
                 .map_or_else(|| plot.height(), |view| view.scale.height),
             logarithmic: view.as_ref().is_some_and(|view| view.scale.logarithmic),
             // Dragging over bars for the logs pane is not a pan.
-            drawing_claims: self.layer.claims_drag()
+            drawing_claims: pane_claim || self.layer.claims_drag()
                 || self.demonstration_claims_drag()
                 || self.values_hold_claims_drag()
                 || self.zoom_claims_drag()

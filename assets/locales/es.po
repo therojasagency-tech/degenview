@@ -20613,3 +20613,7 @@ msgstr "Este gráfico tiene alertas Pine vinculadas. Elimina sus vínculos antes
 #: src/workspace/chart/settings.rs
 msgid "No more indicator instance identifiers are available."
 msgstr "No quedan identificadores de instancias de indicadores disponibles."
+
+#: src/ui/chart/card/pane_measure.rs
+msgid "Δ {value} · {bars} bars · {duration}"
+msgstr "Δ {value} · {bars} velas · {duration}"
