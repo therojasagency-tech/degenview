@@ -6,6 +6,7 @@ pub(in crate::ui) mod canvas;
 pub(in crate::ui) mod compare;
 mod indicators;
 mod indicator_templates;
+mod drawing_sets;
 pub(in crate::ui) mod overlay;
 pub mod overlay_popover;
 mod scripts;
@@ -100,11 +101,18 @@ pub struct ChartSettingsState {
     script_query: String,
     templates: TemplateState,
     indicator_templates: indicator_templates::Controls,
+    drawing_sets: drawing_sets::Controls,
     /// The Compare page's open cards, search and pending confirmation.
     compare: compare::CompareState,
 }
 
 impl ChartSettingsState {
+    pub fn set_current_drawings(&mut self, drawings: &[crate::model::Drawing]) {
+        if self.tab == Tab::Canvas { self.drawing_sets.set_current(drawings); }
+    }
+
+    pub fn refresh_drawing_sets(&mut self) { self.drawing_sets.refresh(); }
+
     /// Says what an action on the whole workspace did, in the sheet's footer.
     pub fn say(&mut self, text: impl Into<String>) {
         self.templates.say(text);
@@ -135,6 +143,7 @@ pub enum ChartSettingsAction {
     /// Give every chart of the workspace this look.
     ApplyToAll(crate::model::chart::template::ApplyScope),
     ApplyIndicatorTemplate(u64),
+    ApplyDrawingSet { id: u64, add: bool },
     /// Read the price axis in this mode.
     SetScaleMode(PriceScaleMode),
     /// Change a compared market.
@@ -214,6 +223,10 @@ pub fn show(
                                     }
                                 }
                                 Tab::Canvas => {
+                                    if let Some((id, add)) = drawing_sets::show(ui, &mut state.drawing_sets, &c) {
+                                        action = Some(ChartSettingsAction::ApplyDrawingSet { id, add });
+                                    }
+                                    ui.separator();
                                     let (store, templates) = (c.store, &mut state.templates);
                                     super::settings::canvas::show(
                                         ui,

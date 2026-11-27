@@ -20,6 +20,7 @@ impl ChartWorkspace {
             return Vec::new();
         };
         let title = chart.display_title();
+        self.settings_state.set_current_drawings(&chart.drawings);
         let outcome = settings::show(
             ctx,
             &mut self.settings_state,
@@ -76,6 +77,13 @@ impl ChartWorkspace {
                     Err(message) => self.settings_state.say(message),
                 }
             }
+            Some(ChartSettingsAction::ApplyDrawingSet { id, add }) => {
+                match self.apply_drawing_set(chart_id, id, add) {
+                    Ok(name) => self.settings_state.say(crate::i18n::tr!("Drawing set applied: {name}", name = name)),
+                    Err(message) => self.settings_state.say(message),
+                }
+                self.settings_state.refresh_drawing_sets();
+            }
             Some(ChartSettingsAction::ApplyToAll(scope)) => {
                 let appearance = self
                     .charts
@@ -126,6 +134,50 @@ impl ChartWorkspace {
         chart.chart.set_pine_instances(instances);
         self.history.record(chart_id, before);
         Ok(template.name)
+    }
+
+    /// Loads a named market-specific drawing set, or adds a copy, as one undo step.
+    /// Before replacing nonempty drawings, durably save a recovery set. No indicator,
+    /// appearance, symbol, timeframe or viewport changes.
+    fn apply_drawing_set(&mut self, chart_id: u64, id: u64, add: bool) -> Result<String, String> {
+        use crate::i18n::tr;
+        use crate::model::chart::drawing_sets::{DrawingSet, KEY, MAX_SETS};
+        use crate::model::Drawing;
+        use crate::workspace::undo::Snapshot;
+        let chart = self.charts.iter_mut().find(|c| c.id == chart_id)
+            .ok_or_else(|| tr!("Chart no longer exists.").to_owned())?;
+        let market = chart.drawing_market();
+        let before: Vec<Drawing> = chart.drawings.iter().filter(|d| !d.is_ruler()).cloned().collect();
+        if !add && before.iter().any(|d| matches!(d, Drawing::Unreadable(_))) {
+            return Err(tr!("This version cannot safely replace unreadable drawings.").to_owned());
+        }
+        let (name, fresh, next) = {
+            let store = crate::lock::lock(&self.store);
+            let mut sets = store.setting_strict::<Vec<DrawingSet>>(KEY)
+                .map_err(|e| e.to_string())?.unwrap_or_default();
+            let set = sets.iter().find(|s| s.id == id).cloned()
+                .ok_or_else(|| tr!("That template no longer exists.").to_owned())?;
+            if set.market != market { return Err(tr!("The drawing set belongs to another market.").to_owned()); }
+            let highest = chart.stored_drawings().highest_id().unwrap_or(0).max(
+                chart.drawings.iter().map(Drawing::stored_id).max().unwrap_or(0));
+            let first = chart.next_drawing_id.max(highest.checked_add(1)
+                .ok_or_else(|| tr!("No more drawing identifiers are available.").to_owned())?);
+            let (fresh, next) = set.fresh(first)?;
+            if !add && !before.is_empty() {
+                if sets.len() >= MAX_SETS { return Err(tr!("Too many drawing sets.").to_owned()); }
+                let backup_id = sets.iter().map(|s| s.id).max().unwrap_or(0).checked_add(1)
+                    .ok_or_else(|| tr!("No more template identifiers are available.").to_owned())?;
+                let name = format!("{} #{}", tr!("Previous drawings"), backup_id);
+                sets.push(DrawingSet { id: backup_id, name, market, drawings: before.clone() });
+                store.set_setting(KEY, &sets).map_err(|e| e.to_string())?;
+            }
+            (set.name, fresh, next)
+        };
+        chart.drawings = if add { before.iter().cloned().chain(fresh).collect() } else { fresh };
+        chart.next_drawing_id = next;
+        self.history.record(chart_id, Snapshot::Drawings(before));
+        self.tools.clear_selection();
+        Ok(name)
     }
 
     /// Gives every other chart of this workspace `appearance`. The plan is made first, for every

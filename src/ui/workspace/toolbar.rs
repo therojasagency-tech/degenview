@@ -97,6 +97,7 @@ pub enum ToolbarAction {
     /// Open the indicator picker for the focused chart.
     OpenIndicators,
     OpenIndicatorTemplates,
+    OpenDrawingSets,
     /// Open the focused chart's settings sheet.
     OpenChartSettings,
     ToggleReplay,
@@ -247,6 +248,12 @@ fn left_items(input: &ToolbarInput) -> Vec<Item> {
             .icon(Icon::CopyDoc)
             .enabled(input.chart.is_some_and(|chart| chart.indicators))
             .on_click(ToolbarAction::OpenIndicatorTemplates),
+    ));
+    items.push(Item::Button(
+        Button::new("drawing-sets", tr!("Drawing sets"))
+            .icon(Icon::Pencil)
+            .enabled(input.chart.is_some_and(|chart| chart.settings))
+            .on_click(ToolbarAction::OpenDrawingSets),
     ));
     items.push(Item::Separator);
     let chart_type = input

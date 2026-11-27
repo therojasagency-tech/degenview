@@ -21875,3 +21875,59 @@ msgstr ""
 #: src/ui/chart/card/pane_measure.rs
 msgid "Δ {value} · {bars} bars · {duration}"
 msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing sets"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Save or switch drawings for this market without changing indicators."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Save current drawings"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set saved."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set deleted."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Too many drawing sets."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Load drawing set"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Add drawing set"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Replace current drawings? A recovery copy will be saved first."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Previous drawings"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set applied: {name}"
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "The drawing set belongs to another market."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "This version cannot safely replace unreadable drawings."
+msgstr ""
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "No more drawing identifiers are available."
+msgstr ""

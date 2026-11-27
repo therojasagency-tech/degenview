@@ -20617,3 +20617,59 @@ msgstr "No quedan identificadores de instancias de indicadores disponibles."
 #: src/ui/chart/card/pane_measure.rs
 msgid "Δ {value} · {bars} bars · {duration}"
 msgstr "Δ {value} · {bars} velas · {duration}"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing sets"
+msgstr "Conjuntos de dibujos"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Save or switch drawings for this market without changing indicators."
+msgstr "Guarda o cambia los dibujos de este mercado sin modificar los indicadores."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Save current drawings"
+msgstr "Guardar dibujos actuales"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set saved."
+msgstr "Conjunto de dibujos guardado."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set deleted."
+msgstr "Conjunto de dibujos eliminado."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Too many drawing sets."
+msgstr "Demasiados conjuntos de dibujos."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Load drawing set"
+msgstr "Cargar conjunto de dibujos"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Add drawing set"
+msgstr "Añadir conjunto de dibujos"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Replace current drawings? A recovery copy will be saved first."
+msgstr "¿Sustituir los dibujos actuales? Primero se guardará una copia de recuperación."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Previous drawings"
+msgstr "Dibujos anteriores"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "Drawing set applied: {name}"
+msgstr "Conjunto de dibujos aplicado: {name}"
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "The drawing set belongs to another market."
+msgstr "El conjunto de dibujos pertenece a otro mercado."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "This version cannot safely replace unreadable drawings."
+msgstr "Esta versión no puede sustituir de forma segura los dibujos no reconocidos."
+
+#: src/ui/chart/settings/drawing_sets.rs src/workspace/chart/settings.rs
+msgid "No more drawing identifiers are available."
+msgstr "No quedan identificadores de dibujos disponibles."

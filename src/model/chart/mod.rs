@@ -7,6 +7,7 @@ pub mod context;
 pub mod countdown;
 pub mod kind;
 pub mod indicator_templates;
+pub mod drawing_sets;
 pub(in crate::model) mod layout;
 pub mod look;
 pub mod object_tree;

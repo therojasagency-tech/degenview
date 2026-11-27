@@ -137,6 +137,10 @@ impl ChartWorkspace {
                 ToolbarAction::Redo => self.redo(ctx),
                 ToolbarAction::OpenIndicators => self.indicator_picker.open(),
                 ToolbarAction::OpenIndicatorTemplates => self.open_focused_chart_settings(),
+                ToolbarAction::OpenDrawingSets => {
+                    self.open_focused_chart_settings();
+                    self.settings_state.tab = crate::ui::chart::settings::Tab::Canvas;
+                }
                 ToolbarAction::CompareSymbol => self.open_compare_picker(),
             }
         }
