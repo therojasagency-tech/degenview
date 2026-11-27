@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub(in crate::workspace) struct LayoutSession {
     /// The layout's fingerprint as last saved or opened; `None` until the tab has one.
     pub(super) baseline: Option<LayoutSnapshot>,
+    pub(super) saved_indicators: HashMap<u64, (crate::model::IndicatorConfig, Vec<crate::model::pine::instance::PineInstance>)>,
     /// Bumped by every change to a chart's drawings; see `ChartWorkspace::drawings_dirty`.
     pub(super) drawings_version: u64,
     pub(super) saved_drawings_version: u64,

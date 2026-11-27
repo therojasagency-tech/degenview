@@ -295,6 +295,7 @@ impl ChartWorkspace {
             let mut after = before.clone();
             if crate::model::drawings::apply_commands(&mut after, vec![command]) {
                 chart.parked_drawings.put(&key, after);
+                self.layout.drawings_edited();
                 self.history.record(chart_id, Snapshot::PaneDrawings { key, drawings: before });
             }
         }
@@ -404,7 +405,7 @@ impl ChartWorkspace {
             let Some(after) = entry.before.swap_into(chart) else {
                 continue;
             };
-            if layout {
+            if layout || matches!(after, Snapshot::PaneDrawings { .. }) {
                 self.layout.drawings_edited();
             }
             let moved = UndoEntry {

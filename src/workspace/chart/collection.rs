@@ -165,7 +165,9 @@ impl ChartWorkspace {
                 created: false,
             };
         }
+        let first_market = self.charts.is_empty() && self.layout.active_view_id().is_none() && !self.is_dirty();
         self.add_chart_with_symbol(&instrument.symbol, instrument.source, ctx);
+        if first_market { self.mark_clean(); }
         let chart_id = self.charts.last().map_or(0, |chart| chart.id);
         AddChartOutcome {
             chart_id,
@@ -258,6 +260,7 @@ impl ChartWorkspace {
         result: &SearchResult,
         ctx: &egui::Context,
     ) {
+        let first_market = self.charts.is_empty() && self.layout.active_view_id().is_none() && !self.is_dirty();
         let instrument = InstrumentId::new(result.source, &result.full_symbol);
         let outcome = self.add_chart_for(&instrument, ctx);
         if result.source == DataSource::DexScreener
@@ -287,6 +290,7 @@ impl ChartWorkspace {
         if result.source.is_prediction_market() {
             self.title_prediction(outcome.chart_id, result, ctx);
         }
+        if first_market { self.mark_clean(); }
     }
 
     /// Gives the chart for a prediction-market pick its event title and, when several choices

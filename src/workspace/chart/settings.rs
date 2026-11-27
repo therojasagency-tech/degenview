@@ -175,6 +175,7 @@ impl ChartWorkspace {
         };
         chart.drawings = if add { before.iter().cloned().chain(fresh).collect() } else { fresh };
         chart.next_drawing_id = next;
+        self.layout.drawings_edited();
         self.history.record(chart_id, Snapshot::Drawings(before));
         self.tools.clear_selection();
         Ok(name)

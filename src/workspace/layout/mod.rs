@@ -84,7 +84,12 @@ impl ChartWorkspace {
         self.layout
             .baseline
             .as_ref()
-            .is_some_and(|baseline| *baseline != self.layout_snapshot())
+            .is_some_and(|baseline| *baseline != self.layout_snapshot()
+                || self.charts.iter().any(|chart| {
+                    self.layout.saved_indicators.get(&chart.id).is_none_or(|(config, scripts)| {
+                        *config != chart.indicators || scripts.as_slice() != chart.chart.pine_instances()
+                    })
+                }))
     }
 
     pub fn mark_clean(&mut self) {
@@ -94,6 +99,9 @@ impl ChartWorkspace {
     /// Records the layout as saved: its fingerprint, and the drawings it holds.
     pub(super) fn set_baseline(&mut self) {
         self.layout.baseline = Some(self.layout_snapshot());
+        self.layout.saved_indicators = self.charts.iter().map(|chart| {
+            (chart.id, (chart.indicators, chart.chart.pine_instances().to_vec()))
+        }).collect();
         self.layout.saved_drawings_version = self.layout.drawings_version;
         self.layout.saved_drawings = self
             .charts
@@ -322,13 +330,25 @@ impl ChartWorkspace {
         Ok(())
     }
 
+    /// Compare actual persistent drawings (including indicator panes), not ruler gestures
+    /// or a version counter that still changes after Undo restores the saved state.
+    pub(in crate::workspace) fn has_unsaved_drawings(&self) -> bool {
+        self.charts.iter().any(|chart| {
+            let current = chart.stored_drawings();
+            match self.layout.saved_drawings.get(&chart.id) {
+                Some(saved) => *saved != current,
+                None => current.count() != 0,
+            }
+        })
+    }
+
     /// The menu's "open": write an autosave layout first, ask over unsaved changes, or apply.
     pub(super) fn request_open_saved_view(&mut self, id: u64, ctx: &egui::Context) {
         if self.autosave_enabled() {
             if self.flush_autosave() {
                 self.apply_saved_view_by_id(id, ctx);
             }
-        } else if self.is_dirty() {
+        } else if self.is_dirty() || self.has_unsaved_drawings() {
             self.layout.pending_open_id = Some(id);
             ctx.request_repaint();
         } else {
@@ -498,6 +518,27 @@ mod tests {
     use crate::workspace::test_support::{
         chart_with_drawings, drawing_ids, empty_workspace, rectangle, unreadable,
     };
+
+    #[test]
+    fn first_market_is_clean_but_indicator_and_drawing_edits_are_not_discarded_silently() {
+        let mut workspace = empty_workspace(72);
+        let ctx = egui::Context::default();
+        let outcome = workspace.add_chart_for(&InstrumentId::new(DataSource::OpenChart,"NASDAQ:GOOGL"),&ctx);
+        assert!(!workspace.is_dirty());
+        assert!(!workspace.has_unsaved_drawings());
+        let original = workspace.charts[0].indicators;
+        workspace.charts[0].indicators.show_ema = !original.show_ema;
+        assert!(workspace.is_dirty());
+        workspace.charts[0].indicators = original;
+        assert!(!workspace.is_dirty());
+        workspace.charts[0].chart.add_pine_instance(None,"Example","indicator(\"Example\")\nplot(close)");
+        assert!(workspace.is_dirty());
+        workspace.mark_clean();
+        workspace.apply_drawing_commands(outcome.chart_id,vec![DrawingCommand::Add(rectangle(1,100))]);
+        assert!(workspace.has_unsaved_drawings());
+        workspace.undo(&ctx);
+        assert!(!workspace.has_unsaved_drawings());
+    }
 
     /// What another Mac's edit looks like once iCloud Sync has stored it: the saved layout's
     /// drawings for one chart replaced.
