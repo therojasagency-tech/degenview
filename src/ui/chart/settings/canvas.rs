@@ -103,6 +103,7 @@ pub fn show(
     );
     ui.add_space(8.0);
     section_title(ui, tr!("Trading period separators"), Some(tr!("First observed bar of the market trading period, independent of local time.")));
+    ui.checkbox(&mut canvas.periods_visible, tr!("Show trading period separators"));
     ui.checkbox(&mut canvas.period_day, tr!("Daily (D)"));
     ui.checkbox(&mut canvas.period_week, tr!("Weekly (W)"));
     ui.checkbox(&mut canvas.period_month, tr!("Monthly (M)"));

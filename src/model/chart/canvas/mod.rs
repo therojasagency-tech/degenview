@@ -333,6 +333,9 @@ pub struct ChartCanvas {
     pub period_day: bool,
     pub period_week: bool,
     pub period_month: bool,
+    /// Master visibility switch; the three individual choices survive hiding.
+    #[serde(skip_serializing_if = "periods_visible_by_default")]
+    pub periods_visible: bool,
     pub crosshair: LineAppearance,
     pub watermark: WatermarkAppearance,
     pub scales: ScaleAppearance,
@@ -350,6 +353,8 @@ pub struct ChartCanvas {
     pub bar_countdown: bool,
 }
 
+fn periods_visible_by_default(on: &bool) -> bool { *on }
+
 fn is_default_countdown(on: &bool) -> bool {
     *on == ChartCanvas::default().bar_countdown
 }
@@ -364,6 +369,7 @@ impl Default for ChartCanvas {
             period_day: true,
             period_week: true,
             period_month: true,
+            periods_visible: true,
             // TradingView draws its crosshair dashed.
             crosshair: LineAppearance::new(LineDash::Dashed),
             watermark: WatermarkAppearance::default(),
@@ -868,3 +874,21 @@ pub fn drag_divider(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod period_visibility_tests {
+    use super::*;
+    #[test]
+    fn master_switch_is_saved_without_changing_individual_choices() {
+        let mut canvas = ChartCanvas::default();
+        canvas.period_day = false;
+        canvas.periods_visible = false;
+        let saved = serde_json::to_string(&canvas).unwrap();
+        let mut reopened: ChartCanvas = serde_json::from_str(&saved).unwrap();
+        assert!(!reopened.periods_visible);
+        reopened.periods_visible = true;
+        assert!(!reopened.period_day && reopened.period_week && reopened.period_month);
+        let old: ChartCanvas = serde_json::from_str("{}").unwrap();
+        assert!(old.periods_visible);
+    }
+}

@@ -1,0 +1,1 @@
+Add a toolbar switch for all trading-period separators on the focused chart, preserving the configured daily, weekly and monthly choices. Restore the last explicitly selected watchlist by id from local settings, saving the selection immediately rather than at shutdown.

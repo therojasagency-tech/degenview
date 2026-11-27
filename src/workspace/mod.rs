@@ -317,7 +317,7 @@ impl ChartWorkspace {
             watchlist,
             quote_book,
             quote_coordinator,
-            watchlist_pane: WatchlistPane::default(),
+            watchlist_pane: WatchlistPane::restored(&store),
             market_flow: market_flow::MarketFlowPane::default(),
             trade: TradeSide::default(),
             context: ContextState::default(),

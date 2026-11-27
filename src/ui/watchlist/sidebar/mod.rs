@@ -275,7 +275,6 @@ impl WatchlistSidebarState {
         }
     }
 
-    #[cfg(test)]
     pub fn selected_list_id(&self) -> Option<EntryId> {
         self.selected_list
     }

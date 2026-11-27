@@ -771,6 +771,7 @@ impl ChartCard {
         if !data.chart_type.is_time_based() { return Vec::new(); }
         let clock = MarketClock::for_market(data.source,data.symbol);
         let cfg = &self.appearance.canvas;
+        if !cfg.periods_visible { return Vec::new(); }
         let mut marks = Vec::new();
         for i in view.start.max(1)..view.end {
             let Some(kind) = period_boundary(clock,data.bars[i-1].open_time,data.bars[i].open_time,

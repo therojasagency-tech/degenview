@@ -71,6 +71,8 @@ impl ChartWorkspace {
             active_layout: active_view_id,
             watchlist_visible: self.watchlist_pane.is_visible(),
             market_flow_visible: self.market_flow.is_visible(),
+            periods_visible: self.focused_market_chart()
+                .is_some_and(|chart| chart.chart.appearance().canvas.periods_visible),
             symbol: symbol.as_deref(),
             chart: self
                 .focused_market_chart()
@@ -117,6 +119,10 @@ impl ChartWorkspace {
                     self.watchlist_pane.toggle();
                 }
                 ToolbarAction::ToggleMarketFlow => self.market_flow.toggle(),
+                ToolbarAction::TogglePeriodSeparators => {
+                    self.toggle_period_separators();
+                    ctx.request_repaint();
+                }
                 ToolbarAction::OpenPortfolio => actions.push(WorkspaceAction::OpenPortfolio),
                 ToolbarAction::OpenPineStudio => {
                     actions.push(WorkspaceAction::OpenPineScripts);
@@ -199,6 +205,15 @@ impl ChartWorkspace {
             return false;
         };
         matches!(self.set_chart_type_for_mcp(chart_id, chart_type), Ok(true))
+    }
+
+    /// Only presentation changes: preserve the selected D/W/M options, bars and drawings.
+    fn toggle_period_separators(&mut self) {
+        let Some(id) = self.focused_market_chart().map(|chart| chart.id) else { return; };
+        if let Some(chart) = self.charts.iter_mut().find(|chart| chart.id == id) {
+            let cfg = &mut chart.chart.appearance_mut().canvas;
+            cfg.periods_visible = !cfg.periods_visible;
+        }
     }
 
     /// Starts a price alert on the focused market chart's market, as the card's bell used to. A

@@ -32,6 +32,7 @@ pub struct ToolbarInput<'a> {
     pub active_layout: Option<u64>,
     pub watchlist_visible: bool,
     pub market_flow_visible: bool,
+    pub periods_visible: bool,
     /// The market the focused chart shows, as its exchange names it; `None` with no chart.
     pub symbol: Option<&'a str>,
     /// The focused market chart the chart type, Indicators and settings buttons act on; `None`
@@ -92,6 +93,7 @@ pub enum ToolbarAction {
     OpenLayout(u64),
     DeleteLayout(u64),
     ToggleWatchlist,
+    TogglePeriodSeparators,
     ToggleMarketFlow,
     OpenPortfolio,
     OpenPineStudio,
@@ -268,6 +270,16 @@ fn left_items(input: &ToolbarInput) -> Vec<Item> {
             .icon(Icon::Pencil)
             .enabled(input.chart.is_some_and(|chart| chart.settings))
             .on_click(ToolbarAction::OpenDrawingSets),
+    ));
+    // Keep the chartist's visibility toggle next to drawing sets, without a new group.
+    items.push(Item::Button(
+        Button::new("period-separators", if input.periods_visible {
+            tr!("Hide trading period separators (D/W/M)")
+        } else { tr!("Show trading period separators (D/W/M)") })
+            .icon(Icon::SplitColumns)
+            .active(input.periods_visible && input.chart.is_some())
+            .enabled(input.chart.is_some_and(|chart| chart.settings))
+            .on_click(ToolbarAction::TogglePeriodSeparators),
     ));
     items.push(Item::Separator);
     let chart_type = input
@@ -646,6 +658,7 @@ mod tests {
             active_layout: None,
             watchlist_visible: true,
             market_flow_visible: false,
+            periods_visible: true,
             symbol: focused.then_some("BTCUSDT"),
             chart: focused.then_some(ToolbarChart {
                 id: 1,
@@ -1082,6 +1095,7 @@ mod tests {
             ToolbarAction::CompareSymbol,
             ToolbarAction::OpenIndicators,
             ToolbarAction::OpenChartSettings,
+            ToolbarAction::TogglePeriodSeparators,
         ] {
             for width in [1400.0, 960.0] {
                 assert_eq!(click_on(&input, width, target), vec![target], "{target:?}");
@@ -1117,6 +1131,7 @@ mod tests {
             ToolbarAction::CompareSymbol,
             ToolbarAction::OpenIndicators,
             ToolbarAction::OpenChartSettings,
+            ToolbarAction::TogglePeriodSeparators,
         ] {
             assert!(disabled.contains(&expected), "{expected:?} is not disabled");
         }

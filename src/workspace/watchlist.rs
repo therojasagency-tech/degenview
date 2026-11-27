@@ -71,7 +71,18 @@ pub(super) struct WatchlistPane {
     open_in_new_tab: Option<WatchlistInstrument>,
 }
 
+const LAST_WATCHLIST_KEY: &str = "watchlist.lastSelected";
+
 impl WatchlistPane {
+    /// Restore the last explicit selection by stable id, not by a mutable name.
+    pub(super) fn restored(store: &crate::store::SharedStore) -> Self {
+        let mut pane = Self::default();
+        if let Some(id) = lock(store).setting::<EntryId>(LAST_WATCHLIST_KEY) {
+            pane.sidebar.select_list(id);
+        }
+        pane
+    }
+
     pub(super) fn is_visible(&self) -> bool {
         self.visible
     }
@@ -172,8 +183,21 @@ impl ChartWorkspace {
                     .or(store_notice.as_ref()),
                 import_report: self.watchlist_pane.import_report.as_ref(),
             };
-            sidebar::show(ui, &mut self.watchlist_pane.sidebar, &input)
+            let before = self.watchlist_pane.sidebar.selected_list_id();
+            let actions = sidebar::show(ui, &mut self.watchlist_pane.sidebar, &input);
+            let after = self.watchlist_pane.sidebar.selected_list_id();
+            let selected = after.filter(|id| !input.load_failed && before != after
+                && lists.iter().any(|list| list.id == *id));
+            (actions, selected)
         };
+        let (actions, selected) = actions;
+        // Write on selection, not at shutdown and not every frame. A failed watchlist load
+        // never overwrites the last valid choice. Release the watchlist lock before saving.
+        if let Some(id) = selected {
+            if let Err(error) = lock(&self.store).set_setting(LAST_WATCHLIST_KEY, &id) {
+                self.watchlist_pane.notice = Some(WatchlistNotice::new(tr!("Couldn't Save"), error.to_string()));
+            }
+        }
         // Only the rows on screen ask for prices, not every list in the library.
         self.quote_coordinator.set_sidebar_demand(
             self.id,
@@ -414,5 +438,17 @@ impl ChartWorkspace {
         {
             chart.apply_watchlist_metadata(item);
         }
+    }
+}
+
+#[cfg(test)]
+mod last_watchlist_tests {
+    use super::*;
+    #[test]
+    fn restores_last_selection_by_id_from_store() {
+        let store = Arc::new(std::sync::Mutex::new(crate::store::Store::open_in_memory().unwrap()));
+        assert_eq!(WatchlistPane::restored(&store).sidebar.selected_list_id(), None);
+        lock(&store).set_setting(LAST_WATCHLIST_KEY, &42_u64).unwrap();
+        assert_eq!(WatchlistPane::restored(&store).sidebar.selected_list_id(), Some(42));
     }
 }
