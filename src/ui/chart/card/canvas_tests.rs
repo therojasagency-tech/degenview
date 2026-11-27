@@ -2041,8 +2041,9 @@ fn pane_heights(harness: &Harness) -> (chart::canvas::PaneHeights, f32) {
         .map(|instance| chart::canvas::PaneSpec::of(instance.id, instance.pane))
         .collect();
     let area = harness.card.body_rect;
-    let heights = chart::canvas::split_panes(area.height(), &specs, None, 0.0);
-    let line = area.top() + heights.main;
+    let axis = CanvasStyle::resolve(&harness.card.appearance.canvas).time_axis_height();
+    let heights = chart::canvas::split_panes(area.height(), &specs, None, axis);
+    let line = area.top() + heights.main - axis;
     (heights, line)
 }
 
@@ -2204,15 +2205,13 @@ fn a_maximized_pane_leaves_the_time_axis_and_a_vanished_one_restores_the_chart()
     let (drawn, pointer) = harness.draw();
     let rect = pointer.rect.expect("chart");
     assert!(
-        drawn.texts.iter().any(|(pos, text, _)| pos.y > rect.top()
-            && pos.y < rect.top() + 40.0
+        drawn.texts.iter().any(|(pos, text, _)| pos.y > rect.bottom() - 30.0
+            && pos.y < rect.bottom()
             && text.contains(':')),
-        "the time axis stays, at the top"
+        "the common time axis stays below even a maximized pane"
     );
     assert!(
-        price_labels(&drawn)
-            .iter()
-            .all(|(y, _)| *y > rect.top() + 24.0),
+        harness.card.probe.expect("a frame was drawn").plot.height() < MIN_PLOT_HEIGHT,
         "no price chart"
     );
     harness.card.apply_pane_action(ids[0], PaneAction::Remove);
@@ -2468,4 +2467,23 @@ fn indicator_ruler_tracks_without_button_and_finishes_at_second_click() {
     harness.pointer = Some(point(0.80));
     let (shapes, _) = harness.frame_with_tool(Tool::Cursor);
     assert_eq!(label(&shapes), final_readout);
+}
+
+
+#[test]
+fn common_time_axis_sits_below_pine_panes_and_owns_the_zoom_gesture() {
+    let mut harness = with_panes(ChartCanvas::default());
+    let (drawn,pointer) = harness.draw();
+    let rect = pointer.rect.expect("chart");
+    let plot = harness.card.probe.expect("chart plot").plot;
+    let axis = CanvasStyle::resolve(&harness.card.appearance.canvas).time_axis_height();
+    let labels: Vec<_> = drawn.texts.iter().filter(|(pos,text,_)| {
+        pos.y > rect.bottom()-axis && pos.x < plot.right() && text.contains(':')
+    }).collect();
+    assert!(!labels.is_empty());
+    assert!(drawn.texts.iter().all(|(pos,text,_)| !text.contains(':') || pos.y < plot.bottom() || pos.y > rect.bottom()-axis));
+    let from = Pos2::new(plot.center().x,rect.bottom()-axis/2.0);
+    let before = harness.card.visible_candles();
+    drag_pointer(&mut harness,from,from+Vec2::new(80.0,0.0));
+    assert!(harness.card.visible_candles() < before);
 }

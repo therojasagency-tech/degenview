@@ -220,8 +220,8 @@ mod tests {
 
     fn panes() -> Vec<Rect> {
         vec![
-            Rect::from_min_size(pos2(0.0, 320.0), vec2(500.0, 50.0)),
-            Rect::from_min_size(pos2(0.0, 370.0), vec2(500.0, 50.0)),
+            Rect::from_min_size(pos2(0.0, 300.0), vec2(500.0, 50.0)),
+            Rect::from_min_size(pos2(0.0, 350.0), vec2(500.0, 50.0)),
         ]
     }
 
@@ -234,7 +234,7 @@ mod tests {
             Some(Spot::PriceAxis)
         );
         assert_eq!(
-            spot(pos2(100.0, 310.0), &regions, &panes),
+            spot(pos2(100.0, 410.0), &regions, &panes),
             Some(Spot::TimeAxis)
         );
         assert_eq!(
@@ -242,7 +242,7 @@ mod tests {
             Some(Spot::Pane(0))
         );
         assert_eq!(
-            spot(pos2(100.0, 400.0), &regions, &panes),
+            spot(pos2(100.0, 380.0), &regions, &panes),
             Some(Spot::Pane(1))
         );
     }
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn the_corner_and_the_outside_have_no_menu() {
         let (regions, panes) = (regions(), panes());
-        assert_eq!(spot(pos2(470.0, 310.0), &regions, &panes), None);
+        assert_eq!(spot(pos2(470.0, 410.0), &regions, &panes), None);
         assert_eq!(spot(pos2(900.0, 100.0), &regions, &panes), None);
     }
 }

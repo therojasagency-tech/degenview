@@ -179,7 +179,7 @@ impl Overlays for LiveOverlays<'_> {
         // The scale menu sits where the axes meet, which a chart with no plot to draw has not got.
         if layout.main_visible
             && self.card.scale_menu
-            && let Some(cell) = scale_menu::corner(plot, layout.rect)
+            && let Some(cell) = scale_menu::corner(Rect::from_min_max(plot.min, Pos2::new(plot.right(), layout.full_rect.bottom()-layout.style.time_axis_height())), layout.full_rect)
         {
             let state = scale_menu::ScaleButton {
                 mode: scale.mode,

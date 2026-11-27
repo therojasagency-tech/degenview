@@ -120,7 +120,7 @@ impl ChartCard {
                 Vec2::new(time_tag_width, style.time_axis_height() - 6.0),
             )
             .intersect(Rect::from_min_max(
-                Pos2::new(plot.left(), plot.bottom()),
+                Pos2::new(plot.left(), (rect.bottom()-style.time_axis_height()).max(plot.top())),
                 Pos2::new(plot.right(), rect.bottom()),
             ));
             painter.rect_filled(time_tag, 3.0, Color32::from_gray(79));

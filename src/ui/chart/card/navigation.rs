@@ -38,7 +38,7 @@ pub(super) enum Region {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Regions {
     pub plot: Rect,
-    /// The main chart down to the bottom of its time axis.
+    /// The main chart's logical allocation, including the reserved common time-axis height.
     pub main: Rect,
     /// The whole chart, panes included.
     pub chart: Rect,
@@ -50,12 +50,12 @@ impl Regions {
             Region::Plot
         } else if !self.chart.contains(point) {
             Region::Elsewhere
-        } else if point.y >= self.main.bottom() {
+        } else if point.y >= self.chart.bottom() - (self.main.bottom()-self.plot.bottom()).max(0.0) {
+            if point.x <= self.plot.right() { Region::TimeAxis } else { Region::Elsewhere }
+        } else if point.y > self.plot.bottom() {
             Region::Pane
-        } else if point.x > self.plot.right() && point.y <= self.plot.bottom() {
+        } else if point.x > self.plot.right() {
             Region::PriceAxis
-        } else if point.y > self.plot.bottom() && point.x <= self.plot.right() {
-            Region::TimeAxis
         } else {
             Region::Elsewhere
         }
@@ -202,14 +202,16 @@ impl ChartCard {
             && pointer.is_some_and(|point| nav.regions.of(point) == Region::PriceAxis);
         if delta.x.abs() > delta.y.abs() {
             // Swiping right moves the chart right, as dragging does.
-            let bars = f64::from(delta.x) / f64::from(nav.slot_width.max(1.0));
-            self.viewport.horizontal.scroll_by(bars, nav.total);
+            if nav.slot_width.is_finite() && nav.slot_width > 0.0 {
+                let bars = f64::from(delta.x) / f64::from(nav.slot_width);
+                self.viewport.horizontal.scroll_by(bars, nav.total);
+            }
         } else if delta.y != 0.0 {
-            let factor = (1.0 - delta.y * 0.004).clamp(0.5, 2.0);
+            let factor = (-delta.y * 0.004).exp().clamp(0.5, 2.0);
             if on_price_axis {
                 self.stretch_prices(factor, nav);
             } else {
-                self.zoom_by(factor, 1.0, nav);
+                self.zoom_by(factor, self.pointer_anchor(pointer, nav), nav);
             }
         }
         // egui reads Ctrl/⌘ with the wheel, and a trackpad pinch, as a zoom factor and leaves the

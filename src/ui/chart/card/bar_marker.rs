@@ -131,7 +131,7 @@ impl ChartCard {
             Vec2::new(width, style.time_axis_height() - 6.0),
         )
         .intersect(Rect::from_min_max(
-            Pos2::new(plot.left(), plot.bottom()),
+            Pos2::new(plot.left(), (rect.bottom()-style.time_axis_height()).max(plot.top())),
             Pos2::new(plot.right(), rect.bottom()),
         ));
         painter.rect_filled(tag, 3.0, accent);

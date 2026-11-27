@@ -1117,7 +1117,8 @@ pub(super) fn paint_tag(
             );
         }
         Tag::Time { x, time_ms, color } => {
-            let width = 116.0 * style.time_size / 9.0;
+            let width = (116.0 * style.time_size / 9.0).min(plot.width().max(0.0));
+            if width <= 0.0 { return; }
             let height = style.time_axis_height() - 6.0;
             // Kept on the chart, so a line at its edge still shows a whole tag.
             let x = x.clamp(plot.left() + width / 2.0, plot.right() - width / 2.0);

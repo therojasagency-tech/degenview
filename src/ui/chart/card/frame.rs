@@ -64,7 +64,8 @@ pub(super) struct FrameLayout<'a> {
     pub style: CanvasStyle,
     /// The whole card.
     pub full_rect: Rect,
-    /// The card above its script panes.
+    /// The main chart's logical allocation, including the reserved common time-axis height.
+    /// The axis itself is painted at the bottom of the full card, below the script panes.
     pub rect: Rect,
     pub plot: Rect,
     /// What the header covers of the plot's top (see `ChartCard::set_top_inset`).
@@ -207,7 +208,9 @@ impl ChartCard {
         let pane_total: f32 = heights.panes.iter().sum();
         let pane_area_top = rect.max.y - pane_total;
         let rect = Rect::from_min_max(rect.min, Pos2::new(rect.max.x, pane_area_top));
-        let mut pane_top = pane_area_top;
+        let time_axis_height = style.time_axis_height().min(rect.height());
+        let plot_bottom = (rect.max.y - time_axis_height).max(rect.min.y);
+        let mut pane_top = plot_bottom;
         let pane_rects: Vec<Rect> = heights
             .panes
             .iter()
@@ -220,8 +223,7 @@ impl ChartCard {
                 pane
             })
             .collect();
-        let time_axis_height = style.time_axis_height();
-        let plot_bottom = (rect.max.y - time_axis_height).max(rect.min.y);
+        // The reserved time-axis strip follows the last pane, not the price plot.
         // The axis is as wide as the widest label it holds. The scale does not depend on the
         // plot's width, so a plot of the final height and any width gives the labels' range.
         let axis_width = {
@@ -385,9 +387,10 @@ impl ChartCard {
         let time_labels = self.calendar_labels(painter, bars, view.start..view.end, &x_for, plot, slot_width, style);
         let tick_xs: Vec<f32> = time_labels.iter().map(|label| label.x).collect();
         self.draw_grid(&main_painter, plot, rect, scale, style, &tick_xs);
+        let axis_plot = Rect::from_min_max(plot.min, Pos2::new(plot.right(), (full_rect.bottom()-style.time_axis_height()).max(plot.top())));
         canvas::paint_scale_lines(
             painter,
-            plot,
+            axis_plot,
             rect.right(),
             full_rect.bottom(),
             style.scale_line,
@@ -558,10 +561,10 @@ impl ChartCard {
                 }).collect()
             } else { Vec::new() },
         );
-        self.draw_time_axis(painter, rect, &time_labels, style);
+        self.draw_time_axis(painter, full_rect, &time_labels, style);
         // The tags of the lines at a price or a time sit on the axes, which the drawings'
         // clipped painter cannot reach.
-        layer.paint_tags(&main_painter, rect, plot, &projection, style);
+        layer.paint_tags(&main_painter, full_rect, plot, &projection, style);
         for (index, (pane_rect, (id, pine))) in layout
             .pane_rects
             .iter()
@@ -570,7 +573,7 @@ impl ChartCard {
         {
             let collapsed = layout.pane_specs[index].collapsed;
             let maximized = layout.maximized == Some(*id);
-            if index > 0 || !layout.heights.main_collapsed || pane_rect.top() > rect.bottom() {
+            if index > 0 || !layout.heights.main_collapsed || pane_rect.top() > plot.bottom() {
                 // The line between this pane and what lies above it.
                 if let Some(separator) = style.separator {
                     canvas::horizontal(
@@ -655,7 +658,7 @@ impl ChartCard {
                 painter,
                 &projection,
                 plot,
-                rect,
+                full_rect,
                 &layout.pane_rects,
                 style,
                 main_visible,
@@ -676,7 +679,7 @@ impl ChartCard {
                 painter,
                 &projection,
                 plot,
-                rect,
+                full_rect,
                 &layout.pane_rects,
                 style,
                 main_visible,
@@ -687,7 +690,7 @@ impl ChartCard {
             if let Some(bottom) = self.draw_crosshair(
                 painter,
                 plot,
-                rect,
+                full_rect,
                 &layout.pane_rects,
                 crosshair,
                 decor.chart_id,
