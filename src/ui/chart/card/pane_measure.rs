@@ -15,7 +15,30 @@ struct Measure {
     pane: u64,
     a: Anchor,
     b: Anchor,
-    dragging: bool,
+    phase: Phase,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Phase {
+    FirstPress { origin: Pos2 },
+    Tracking,
+    SecondPress,
+    Complete,
+}
+
+impl Phase {
+    fn active(self) -> bool { self != Self::Complete }
+
+    /// Like the price ruler, a short first press leaves the second anchor attached
+    /// to the pointer; a deliberate drag or a second press completes the range.
+    fn released(self, point: Pos2) -> Self {
+        match self {
+            Self::FirstPress { origin } if origin.distance(point) >= 4.0 => Self::Complete,
+            Self::FirstPress { .. } => Self::Tracking,
+            Self::SecondPress => Self::Complete,
+            other => other,
+        }
+    }
 }
 
 impl Measure {
@@ -63,7 +86,7 @@ impl State {
             self.measure = None;
         }
         if blocked || frame.keys_blocked || !focused || frame.hide_all {
-            if self.measure.as_ref().is_some_and(|m| m.dragging) { self.measure = None; }
+            if self.measure.as_ref().is_some_and(|m| m.phase.active()) { self.measure = None; }
             return false;
         }
         if escape && self.measure.take().is_some() {
@@ -85,7 +108,7 @@ impl State {
                     (geometry.plot.contains(point) && !on_controls).then_some((*id, &***pine, geometry))
                 })
         };
-        let active = self.measure.as_ref().is_some_and(|m| m.dragging);
+        let active = self.measure.as_ref().is_some_and(|m| m.phase.active());
         let magnet = if modifiers.shift { MagnetMode::Off } else { frame.magnet.inverted(modifiers.command) };
         let owns_pointer = response.hovered() || response.is_pointer_button_down_on();
         let armed = frame.tool == Tool::Ruler;
@@ -100,12 +123,12 @@ impl State {
             && let Some((pane, pine, geometry)) = pane_at(point) {
             let proj = projection(view, data, &geometry, ui.ctx());
             let a = anchor(&proj, point, pine, data.bars, magnet);
-            self.measure = Some(Measure { source: data.source, symbol: data.symbol.to_owned(), timeframe, pane, a, b: a, dragging: true });
+            self.measure = Some(Measure { source: data.source, symbol: data.symbol.to_owned(), timeframe, pane, a, b: a, phase: Phase::FirstPress { origin: point } });
         } else if !active && pressed && response.hovered() {
             // A completed measurement is kept until the next click, just like the price ruler.
             self.measure = None;
         }
-        if let Some(m) = self.measure.as_mut().filter(|m| m.dragging) {
+        if let Some(m) = self.measure.as_mut().filter(|m| m.phase.active()) {
             if frame.tool != Tool::Ruler {
                 self.measure = None;
                 return false;
@@ -115,13 +138,27 @@ impl State {
             if let Some(((rect, (_, pine)), _)) = pane {
                 if let Some(geometry) = PaneGeometry::new(*rect, layout.plot, pine, shown, tail) {
                     let proj = projection(view, data, &geometry, ui.ctx());
+                    // Tracking follows the pointer even when no mouse button is down.
+                    // Only a second press in the originating pane may finalize it.
+                    if m.phase == Phase::Tracking && pressed && owns_pointer {
+                        if pointer.and_then(pane_at).is_some_and(|(id, _, _)| id == m.pane) {
+                            m.phase = Phase::SecondPress;
+                        } else {
+                            self.measure = None;
+                            return true;
+                        }
+                    }
                     if let Some(point) = pointer {
                         m.b = anchor(&proj, point, pine, data.bars, magnet);
                     }
                     if released || response.drag_stopped_by(primary) {
-                        m.dragging = false;
-                        frame.put_down |= !frame.keep_drawing;
-                    } else if !down {
+                        let at = pointer.unwrap_or_else(|| proj.point(m.b));
+                        m.phase = m.phase.released(at);
+                        if m.phase == Phase::Complete {
+                            frame.put_down |= !frame.keep_drawing;
+                        }
+                    } else if !down && matches!(m.phase, Phase::FirstPress { .. } | Phase::SecondPress) {
+                        // A lost button/focus event must not leave a pressed gesture alive.
                         self.measure = None;
                     }
                     return true;
@@ -178,6 +215,18 @@ fn duration_text(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ruler_supports_two_clicks_and_click_drag() {
+        let at = Pos2::new(100.0, 100.0);
+        let first = Phase::FirstPress { origin: at };
+        assert_eq!(first.released(at), Phase::Tracking);
+        assert_eq!(first.released(at + Vec2::new(1.0, 1.0)), Phase::Tracking);
+        assert_eq!(first.released(at + Vec2::new(20.0, 0.0)), Phase::Complete);
+        assert!(Phase::Tracking.active());
+        assert_eq!(Phase::SecondPress.released(at), Phase::Complete);
+        assert!(!Phase::Complete.active());
+    }
+
     #[test]
     fn duration_is_elapsed_time_not_a_count_of_trading_days() {
         assert_eq!(duration_text(3 * 86_400_000 + 2 * 3_600_000), "3d 2h");

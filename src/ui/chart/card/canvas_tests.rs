@@ -2431,3 +2431,41 @@ fn ruler_claims_indicator_pane_before_navigation() {
     let drawn = gather(&shapes);
     assert!(drawn.texts.iter().any(|(_,s,_)| s.contains("Δ")), "{:?}", drawn.texts);
 }
+
+
+#[test]
+fn indicator_ruler_tracks_without_button_and_finishes_at_second_click() {
+    use crate::model::Tool;
+    let mut harness = with_panes(ChartCanvas::default());
+    harness.draw();
+    let (heights, first) = pane_heights(&harness);
+    let plot = harness.card.probe.expect("drawn chart").plot;
+    let point = |fraction: f32| Pos2::new(plot.left()+plot.width()*fraction,first+heights.panes[0]*0.60);
+    let label = |shapes: &[ClippedShape]| gather(shapes).texts.into_iter()
+        .find(|(_, text, _)| text.contains("Δ")).expect("ruler readout").1;
+
+    harness.pointer = Some(point(0.20));
+    harness.frame_with_tool(Tool::Ruler);
+    harness.button = Some(true);
+    harness.frame_with_tool(Tool::Ruler);
+    harness.button = Some(false);
+    harness.frame_with_tool(Tool::Ruler);
+
+    // No primary button pressed: the rubber anchor must still track the pointer.
+    harness.pointer = Some(point(0.35));
+    let (shapes, _) = harness.frame_with_tool(Tool::Ruler);
+    let first_readout = label(&shapes);
+    harness.pointer = Some(point(0.60));
+    let (shapes, _) = harness.frame_with_tool(Tool::Ruler);
+    let second_readout = label(&shapes);
+    assert_ne!(first_readout, second_readout);
+
+    harness.button = Some(true);
+    harness.frame_with_tool(Tool::Ruler);
+    harness.button = Some(false);
+    let (shapes, _) = harness.frame_with_tool(Tool::Ruler);
+    let final_readout = label(&shapes);
+    harness.pointer = Some(point(0.80));
+    let (shapes, _) = harness.frame_with_tool(Tool::Cursor);
+    assert_eq!(label(&shapes), final_readout);
+}
