@@ -20693,3 +20693,11 @@ msgstr "Commit de Git"
 #: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
 msgid "Official updates are disabled in this build."
 msgstr "Las actualizaciones oficiales están desactivadas en esta compilación."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Replace the saved indicators and settings with those of this chart? Existing charts and drawings will not change."
+msgstr "¿Sustituir los indicadores y ajustes guardados por los de este gráfico? Los gráficos existentes y sus dibujos no cambiarán."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "The template has changed. Refresh and try again."
+msgstr "La plantilla ha cambiado. Actualiza la lista y vuelve a intentarlo."

@@ -21951,3 +21951,11 @@ msgstr ""
 #: src/ui/settings/about.rs src/service/update/check.rs src/host/update/mod.rs
 msgid "Official updates are disabled in this build."
 msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Replace the saved indicators and settings with those of this chart? Existing charts and drawings will not change."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "The template has changed. Refresh and try again."
+msgstr ""

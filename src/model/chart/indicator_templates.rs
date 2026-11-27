@@ -14,6 +14,12 @@ pub struct IndicatorTemplate {
 }
 
 impl IndicatorTemplate {
+    /// Replace only the saved indicator configuration; preserve the template's identity.
+    pub fn update_from_chart(&mut self, indicators: IndicatorConfig, scripts: &[PineInstance]) {
+        self.indicators = indicators;
+        self.scripts = scripts.to_vec();
+    }
+
     /// Runtime IDs belong to the target chart, not to the source template.
     pub fn fresh_instances(&self, after: u64) -> Option<Vec<PineInstance>> {
         self.scripts.iter().enumerate().map(|(index, script)| {
@@ -27,6 +33,29 @@ impl IndicatorTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updating_a_template_keeps_its_identity_and_replaces_the_entire_set() {
+        let old = PineInstance::new(1, None, "Old", "indicator(\"Old\")\nplot(close)");
+        let mut new = PineInstance::new(2, None, "New", "indicator(\"New\")\nplot(open)");
+        new.visible = false;
+        new.pane.share = Some(0.25);
+        let mut config = IndicatorConfig::default();
+        config.show_ema = !config.show_ema;
+        let mut template = IndicatorTemplate {
+            id: 7, name: "Sentiment".into(), indicators: IndicatorConfig::default(),
+            scripts: vec![old.clone(), old],
+        };
+        template.update_from_chart(config, &[new.clone()]);
+        assert_eq!(template.id, 7);
+        assert_eq!(template.name, "Sentiment");
+        assert_eq!(template.indicators, config);
+        assert_eq!(template.scripts, vec![new]);
+        let decoded: IndicatorTemplate = serde_json::from_str(&serde_json::to_string(&template).unwrap()).unwrap();
+        assert_eq!(decoded, template);
+        template.update_from_chart(IndicatorConfig::default(), &[]);
+        assert!(template.scripts.is_empty());
+    }
 
     #[test]
     fn templates_keep_settings_and_order_but_allocate_fresh_ids() {

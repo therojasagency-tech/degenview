@@ -12,6 +12,7 @@ pub(super) struct Controls {
     rows: Option<Result<Vec<IndicatorTemplate>, String>>,
     notice: Option<String>,
     deleting: Option<u64>,
+    updating: Option<u64>,
 }
 
 fn read(store: &SharedStore) -> Result<Vec<IndicatorTemplate>, String> {
@@ -34,6 +35,7 @@ pub(super) fn show(ui: &mut Ui, controls: &mut Controls, c: &ChartSettingsContex
     }
     let mut apply = None;
     let mut remove = None;
+    let mut update = None;
     ui.horizontal(|ui| {
         ui.text_edit_singleline(&mut controls.name);
         if ui.button(tr!("Save current indicators")).clicked() {
@@ -62,6 +64,7 @@ pub(super) fn show(ui: &mut Ui, controls: &mut Controls, c: &ChartSettingsContex
         if ui.button(tr!("Refresh")).clicked() {
             controls.rows = Some(read(c.store));
             controls.deleting = None;
+            controls.updating = None;
         }
     });
     if let Some(rows) = &controls.rows {
@@ -71,17 +74,54 @@ pub(super) fn show(ui: &mut Ui, controls: &mut Controls, c: &ChartSettingsContex
                 for row in rows {
                     ui.push_id(row.id, |ui| {
                         ui.horizontal(|ui| {
-                            if ui.button(&row.name).clicked() { apply = Some(row.id); }
+                            if ui.button(&row.name).clicked() {
+                                apply = Some(row.id);
+                                controls.updating = None;
+                                controls.deleting = None;
+                            }
+                            if ui.button(tr!("Update from this chart")).clicked() {
+                                controls.updating = Some(row.id);
+                                controls.deleting = None;
+                            }
                             if controls.deleting == Some(row.id) {
                                 if ui.button(tr!("Confirm deletion")).clicked() { remove = Some(row.id); }
                                 if ui.button(tr!("Cancel")).clicked() { controls.deleting = None; }
-                            } else if ui.button(tr!("Delete")).clicked() { controls.deleting = Some(row.id); }
+                            } else if ui.button(tr!("Delete")).clicked() {
+                                controls.deleting = Some(row.id);
+                                controls.updating = None;
+                            }
                         });
+                        if controls.updating == Some(row.id) {
+                            ui.label(tr!("Update “{name}”?", name = row.name.as_str()));
+                            ui.label(tr!("Replace the saved indicators and settings with those of this chart? Existing charts and drawings will not change."));
+                            ui.horizontal(|ui| {
+                                if ui.button(tr!("Update Template")).clicked() { update = Some(row.clone()); }
+                                if ui.button(tr!("Cancel")).clicked() { controls.updating = None; }
+                            });
+                        }
                     });
                 }
             }
             Err(error) => { ui.label(error); }
         }
+    }
+    if let Some(expected) = update {
+        match change(c.store, |rows| {
+            let row = rows.iter_mut().find(|row| row.id == expected.id)
+                .ok_or_else(|| tr!("That template no longer exists.").to_owned())?;
+            if *row != expected {
+                return Err(tr!("The template has changed. Refresh and try again.").to_owned());
+            }
+            row.update_from_chart(*c.indicators, c.card.pine_instances());
+            Ok(())
+        }) {
+            Ok(rows) => {
+                controls.rows = Some(Ok(rows));
+                controls.notice = Some(tr!("Updated “{name}” from this chart.", name = expected.name.as_str()));
+            }
+            Err(error) => controls.notice = Some(error),
+        }
+        controls.updating = None;
     }
     if let Some(id) = remove {
         match change(c.store, |rows| {
