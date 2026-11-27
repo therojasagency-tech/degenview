@@ -48,14 +48,7 @@ impl ChartCard {
             }
         }
         let width = self.time_tag_width(style);
-        let tag = Rect::from_center_size(
-            Pos2::new(x, rect.bottom() - style.time_axis_height() / 2.0),
-            Vec2::new(width, style.time_axis_height() - 6.0),
-        )
-        .intersect(Rect::from_min_max(
-            Pos2::new(plot.left(), (rect.bottom()-style.time_axis_height()).max(plot.top())),
-            Pos2::new(plot.right(), rect.bottom()),
-        ));
+        let tag = super::paint::time_axis_tag(plot,rect,x,width,style);
         painter.rect_filled(tag, 3.0, Color32::from_gray(79));
         painter.text(
             tag.center(),

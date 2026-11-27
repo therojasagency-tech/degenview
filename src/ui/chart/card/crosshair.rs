@@ -114,15 +114,8 @@ impl ChartCard {
 
         if caps.axis_tags && style.indicator_readouts.crosshair_tags && !crosshair.frozen && let Some(time) = time {
             let date = self.time_text(time);
-            let time_tag_width = self.time_tag_width(style);
-            let time_tag = Rect::from_center_size(
-                Pos2::new(x, rect.bottom() - style.time_axis_height() / 2.0),
-                Vec2::new(time_tag_width, style.time_axis_height() - 6.0),
-            )
-            .intersect(Rect::from_min_max(
-                Pos2::new(plot.left(), (rect.bottom()-style.time_axis_height()).max(plot.top())),
-                Pos2::new(plot.right(), rect.bottom()),
-            ));
+            let time_tag_width = painter.layout_no_wrap(date.clone(),style.time_font(),Color32::WHITE).size().x + 14.0;
+            let time_tag = super::paint::time_axis_tag(plot,rect,x,time_tag_width,style);
             painter.rect_filled(time_tag, 3.0, Color32::from_gray(79));
             painter.text(
                 time_tag.center(),

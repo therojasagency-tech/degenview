@@ -10,6 +10,17 @@ pub(super) struct TimeLabel {
     galley: std::sync::Arc<egui::Galley>,
 }
 
+/// Keep the crosshair and time-marker labels inside the common axis, shifting the
+/// whole pill at either edge instead of clipping its date.
+pub(super) fn time_axis_tag(plot: Rect, full: Rect, x: f32, width: f32, style: &CanvasStyle) -> Rect {
+    let width = width.min(plot.width().max(0.0)).max(0.0);
+    let half = width/2.0;
+    let center = x.clamp(plot.left()+half, (plot.right()-half).max(plot.left()+half));
+    Rect::from_center_size(
+        Pos2::new(center,full.bottom()-style.time_axis_height()/2.0),
+        Vec2::new(width,(style.time_axis_height()-6.0).max(0.0)))
+}
+
 impl ChartCard {
     /// The price labels and the grid lines behind the series. One tick list serves both, so a
     /// line is always on its label; the vertical lines stand on the time axis' own ticks. The

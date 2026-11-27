@@ -1,7 +1,8 @@
 //! Autosave: the debounce that writes a named layout once it has sat unchanged.
 
 use crate::i18n::tr;
-use crate::model::LayoutSnapshot;
+use crate::model::{IndicatorConfig, LayoutSnapshot};
+use crate::model::pine::instance::PineInstance;
 use crate::workspace::ChartWorkspace;
 use eframe::egui;
 use std::time::{Duration, Instant};
@@ -18,11 +19,19 @@ enum AutosaveStep {
     Save,
 }
 
+/// Everything a saved layout owns that can change between autosave attempts.
+#[derive(PartialEq)]
+struct SaveFingerprint {
+    layout: LayoutSnapshot,
+    indicators: Vec<(u64, IndicatorConfig, Vec<PineInstance>)>,
+    drawings_version: u64,
+}
+
 /// The debounce behind autosave. `armed` is the last layout seen dirty; `due` is when it gets
 /// written, or `None` once it has been tried, so an unchanged layout is never retried in a loop.
 #[derive(Default)]
 pub(in crate::workspace) struct AutosaveState {
-    armed: Option<LayoutSnapshot>,
+    armed: Option<SaveFingerprint>,
     due: Option<Instant>,
     /// The last autosave did not reach disk; the layout is still dirty.
     pub(in crate::workspace) failed: bool,
@@ -35,7 +44,7 @@ impl AutosaveState {
         &mut self,
         dirty: bool,
         enabled: bool,
-        snapshot: impl FnOnce() -> LayoutSnapshot,
+        snapshot: impl FnOnce() -> SaveFingerprint,
         now: Instant,
     ) -> AutosaveStep {
         if !dirty || !enabled {
@@ -83,7 +92,11 @@ impl ChartWorkspace {
         enabled: bool,
     ) {
         let mut state = std::mem::take(&mut self.layout.autosave);
-        let step = state.step(dirty, enabled, || self.layout_snapshot(), Instant::now());
+        let step = state.step(dirty, enabled, || SaveFingerprint {
+            layout: self.layout_snapshot(),
+            indicators: self.charts.iter().map(|chart| (chart.id,chart.indicators,chart.chart.pine_instances().to_vec())).collect(),
+            drawings_version: self.layout.drawings_version,
+        }, Instant::now());
         self.layout.autosave = state;
         match step {
             AutosaveStep::Nothing => {}
@@ -115,8 +128,8 @@ mod tests {
     use crate::model::chart::price_scale::PriceScaleMode;
     use crate::model::{DataSource, Timeframe};
 
-    fn snapshot(logarithmic: bool) -> LayoutSnapshot {
-        LayoutSnapshot {
+    fn snapshot(logarithmic: bool) -> SaveFingerprint {
+        SaveFingerprint { layout: LayoutSnapshot {
             timeframe: Timeframe::HOUR_1,
             configs: vec![crate::model::ChartConfig {
                 id: 1,
@@ -129,7 +142,23 @@ mod tests {
             }],
             columns: vec![vec![1]],
             sync: Default::default(),
-        }
+        }, indicators: Vec::new(), drawings_version: 0 }
+    }
+
+    #[test]
+    fn indicator_and_drawing_edits_restart_the_autosave_debounce() {
+        let mut state = AutosaveState::default();
+        let start = Instant::now();
+        assert_eq!(state.step(true,true,||snapshot(false),start), AutosaveStep::Wait(AUTOSAVE_DELAY));
+        let indicators = || {
+            let mut s = snapshot(false);
+            s.indicators.push((1,IndicatorConfig::default(),vec![PineInstance::new(1,None,"Example","indicator(\"Example\")\nplot(close)")]));
+            s
+        };
+        assert_eq!(state.step(true,true,indicators,start+Duration::from_secs(1)), AutosaveStep::Wait(AUTOSAVE_DELAY));
+        let drawings = || { let mut s = indicators(); s.drawings_version = 1; s };
+        assert_eq!(state.step(true,true,drawings,start+Duration::from_secs(2)), AutosaveStep::Wait(AUTOSAVE_DELAY));
+        assert_eq!(state.step(true,true,drawings,start+Duration::from_secs(4)), AutosaveStep::Save);
     }
 
     #[test]
