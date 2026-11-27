@@ -21791,3 +21791,83 @@ msgstr ""
 msgctxt "window button"
 msgid "Minimize"
 msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Crosshair axis labels"
+msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator names"
+msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator parameters"
+msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator readouts"
+msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator value labels on scales"
+msgstr ""
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator values"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs src/ui/workspace/toolbar.rs
+msgid "Indicator templates"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Switch indicators without changing the market or drawings."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Save current indicators"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Too many indicator templates."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "No more template identifiers are available."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Indicator template saved."
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Refresh"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Confirm deletion"
+msgstr ""
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Indicator template deleted."
+msgstr ""
+
+#: src/workspace/chart/settings.rs
+msgid "Applied indicator template: {name}"
+msgstr ""
+
+#: src/workspace/chart/settings.rs
+msgid "Chart no longer exists."
+msgstr ""
+
+#: src/workspace/chart/settings.rs
+msgid "This chart does not support indicators."
+msgstr ""
+
+#: src/workspace/chart/settings.rs
+msgid "This chart has linked Pine alerts. Remove their bindings before replacing its indicators."
+msgstr ""
+
+#: src/workspace/chart/settings.rs
+msgid "No more indicator instance identifiers are available."
+msgstr ""

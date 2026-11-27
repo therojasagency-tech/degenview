@@ -410,7 +410,7 @@ fn a_source_that_cannot_show_a_type_falls_back_to_candles() {
 fn shared_colours_follow_the_drawn_types_colours_or_the_saved_palette() {
     let mut card = ChartCard::default();
     let saved = (card.bullish_color(), card.bearish_color());
-    assert_eq!(saved.0, Color32::from_rgb(48, 209, 88));
+    assert_eq!(saved.0, Color32::from_rgb(4, 153, 129));
     card.set_chart_type(ChartType::Kagi);
     card.chart_style_mut().kagi.up = Some([10, 20, 30, 255]);
     // Not drawn as Kagi yet: the colours follow what was last drawn.

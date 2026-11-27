@@ -1099,8 +1099,8 @@ fn the_watermark_names_the_market_timeframe_and_source_and_sits_behind_the_candl
     let candle_at = shapes
         .iter()
         .position(|clipped| {
-            matches!(&clipped.shape, Shape::Rect(rect) if rect.fill == Color32::from_rgb(48, 209, 88)
-                || rect.fill == Color32::from_rgb(255, 69, 58))
+            matches!(&clipped.shape, Shape::Rect(rect) if rect.fill == Color32::from_rgb(4, 153, 129)
+                || rect.fill == Color32::from_rgb(242, 54, 69))
         })
         .expect("candles are drawn");
     let watermark_shape = order[watermark_at].0;
@@ -1426,8 +1426,8 @@ fn the_demonstration_marks_are_painted_over_the_chart_and_its_background() {
     let candle = shapes
         .iter()
         .rposition(|shape| {
-            matches!(shape, Shape::Rect(rect) if rect.fill == Color32::from_rgb(48, 209, 88)
-                || rect.fill == Color32::from_rgb(255, 69, 58))
+            matches!(shape, Shape::Rect(rect) if rect.fill == Color32::from_rgb(4, 153, 129)
+                || rect.fill == Color32::from_rgb(242, 54, 69))
         })
         .expect("candles are painted");
     assert!(

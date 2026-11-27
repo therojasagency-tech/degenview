@@ -20533,3 +20533,83 @@ msgstr "Área"
 msgctxt "window button"
 msgid "Minimize"
 msgstr "Minimizar"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Crosshair axis labels"
+msgstr "Etiquetas de la cruceta en los ejes"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator names"
+msgstr "Nombres de indicadores"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator parameters"
+msgstr "Parámetros de indicadores"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator readouts"
+msgstr "Lecturas de indicadores"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator value labels on scales"
+msgstr "Etiquetas de valores de indicadores en las escalas"
+
+#: src/ui/chart/settings/canvas.rs
+msgid "Indicator values"
+msgstr "Valores de indicadores"
+
+#: src/ui/chart/settings/indicator_templates.rs src/ui/workspace/toolbar.rs
+msgid "Indicator templates"
+msgstr "Plantillas de indicadores"
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Switch indicators without changing the market or drawings."
+msgstr "Cambia los indicadores sin modificar el mercado ni los dibujos."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Save current indicators"
+msgstr "Guardar indicadores actuales"
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Too many indicator templates."
+msgstr "Demasiadas plantillas de indicadores."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "No more template identifiers are available."
+msgstr "No quedan identificadores de plantillas disponibles."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Indicator template saved."
+msgstr "Plantilla de indicadores guardada."
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Refresh"
+msgstr "Actualizar"
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Confirm deletion"
+msgstr "Confirmar eliminación"
+
+#: src/ui/chart/settings/indicator_templates.rs
+msgid "Indicator template deleted."
+msgstr "Plantilla de indicadores eliminada."
+
+#: src/workspace/chart/settings.rs
+msgid "Applied indicator template: {name}"
+msgstr "Plantilla de indicadores aplicada: {name}"
+
+#: src/workspace/chart/settings.rs
+msgid "Chart no longer exists."
+msgstr "El gráfico ya no existe."
+
+#: src/workspace/chart/settings.rs
+msgid "This chart does not support indicators."
+msgstr "Este gráfico no admite indicadores."
+
+#: src/workspace/chart/settings.rs
+msgid "This chart has linked Pine alerts. Remove their bindings before replacing its indicators."
+msgstr "Este gráfico tiene alertas Pine vinculadas. Elimina sus vínculos antes de sustituir los indicadores."
+
+#: src/workspace/chart/settings.rs
+msgid "No more indicator instance identifiers are available."
+msgstr "No quedan identificadores de instancias de indicadores disponibles."

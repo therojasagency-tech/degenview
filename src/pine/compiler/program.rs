@@ -211,12 +211,25 @@ pub struct ValueFormat {
     pub precision: Option<i64>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
 pub struct IndicatorPresentation {
     pub title: String,
     pub number: ValueFormat,
     pub plots: HashMap<usize, ValueFormat>,
     pub parameters: Vec<String>,
+}
+
+// Debug snapshots must not depend on the random iteration order of a HashMap.
+impl std::fmt::Debug for IndicatorPresentation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ordered: std::collections::BTreeMap<_, _> = self.plots.iter().collect();
+        f.debug_struct("IndicatorPresentation")
+            .field("title", &self.title)
+            .field("number", &self.number)
+            .field("plots", &ordered)
+            .field("parameters", &self.parameters)
+            .finish()
+    }
 }
 
 /// The rendered output of one full script run.

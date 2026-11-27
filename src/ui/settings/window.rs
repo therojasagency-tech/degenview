@@ -26,7 +26,7 @@ pub const SIDEBAR_WIDTH: f32 = 224.0;
 /// The Settings window: the sidebar and a 616-point page.
 pub const WINDOW_SIZE: Vec2 = Vec2::new(840.0, 600.0);
 /// The smallest the window can be made: tall enough for every sidebar row.
-pub const MIN_SIZE: Vec2 = Vec2::new(520.0, 480.0);
+pub const MIN_SIZE: Vec2 = Vec2::new(520.0, 530.0);
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum SettingsSection {

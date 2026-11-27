@@ -1274,7 +1274,7 @@ fn a_venue_nothing_serves_is_named_and_the_symbol_searched_everywhere() {
     let shown = texts(&mut rig);
     assert!(
         shown.iter().any(|text| text
-            == "KUCOIN isn't supported. Searched: Binance, Coinbase, OKX, Kraken, Bybit, Gate.io, MEXC, DEXScreener, CoinGecko, and Alpaca."),
+            == "KUCOIN isn't supported. Searched: Binance, Coinbase, OKX, Kraken, Bybit, Gate.io, MEXC, DEXScreener, CoinGecko, Alpaca, TradingView, and OANDA."),
         "{shown:?}"
     );
     assert!(
@@ -1291,7 +1291,7 @@ fn a_plain_miss_lists_the_venues_that_were_searched() {
     let shown = texts(&mut rig);
     assert!(
         shown.iter().any(|text| text
-            == "Nothing matches “zzz”. Searched: Binance, Coinbase, OKX, Kraken, Bybit, Gate.io, MEXC, DEXScreener, CoinGecko, and Alpaca."),
+            == "Nothing matches “zzz”. Searched: Binance, Coinbase, OKX, Kraken, Bybit, Gate.io, MEXC, DEXScreener, CoinGecko, Alpaca, TradingView, and OANDA."),
         "{shown:?}"
     );
     rig.picker.set_venue(Some(DataSource::Coinbase));
@@ -1626,7 +1626,14 @@ fn the_picker_draws_in_the_pseudo_locale() {
                 rig.settle();
                 let (_, output) = rig.frame_with_output(Vec::new());
                 let texts = painted_text::of(&output);
-                painted_text::assert_painted(&texts, "Predictions");
+                // On a narrow window the category control is a compact dropdown.
+                let selected = match scope {
+                    Scope::All => "All",
+                    Scope::Predictions => "Predictions",
+                    Scope::Dashboards => "Dashboards",
+                    _ => unreachable!("only the tested scopes"),
+                };
+                painted_text::assert_painted(&texts, selected);
                 painted_text::assert_painted(&texts, "Navigate");
                 if gallery_dir().is_some() {
                     eprintln!("{name}: {:?}", painted_text::unbracketed(&texts));
