@@ -102,6 +102,41 @@ pub fn subtitle(item: &WatchlistInstrument) -> String {
     }
 }
 
+/// OpenChart names often include both the venue and a long description. Keep the
+/// actual ticker in the prominent line, so two EURUSD feeds are distinguishable
+/// in the second line without truncating the symbol itself.
+fn row_title(item: &WatchlistInstrument) -> &str {
+    if item.card.is_none() {
+        match item.instrument.source {
+            DataSource::OpenChart => {
+                if let Some((_,ticker)) = item.instrument.symbol.split_once(':') {
+                    return ticker;
+                }
+            }
+            DataSource::Oanda => return &item.instrument.symbol,
+            _ => {}
+        }
+    }
+    &item.name
+}
+
+fn provider_lines(item: &WatchlistInstrument) -> (String,String) {
+    if item.card.is_none() {
+        match item.instrument.source {
+            DataSource::OpenChart => {
+                if let Some((venue,_)) = item.instrument.symbol.split_once(':') {
+                    return (format!("{venue} · TradingView"),format!("{venue} · TV"));
+                }
+                return ("TradingView".into(),"TV".into());
+            }
+            DataSource::Oanda => return ("OANDA API".into(),"OANDA".into()),
+            _ => {}
+        }
+    }
+    let text = subtitle(item);
+    (text.clone(),text)
+}
+
 fn direction_color(direction: Direction, flat: Color32) -> Color32 {
     match direction {
         Direction::Up => theme::UP,
@@ -198,7 +233,7 @@ pub fn column_header(
             clicked = Some(key);
         }
     }
-    if display.shows_chart {
+    if chart_rect(display, rect, values_left).is_some() {
         paint_title(
             ui,
             "chart",
@@ -393,17 +428,24 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
     let name_width = (name_right - name_left).max(24.0);
     let name = kit::galley(
         ui,
-        &item.name,
+        row_title(item),
         size::BODY + 1.0,
         kit::SEMIBOLD,
         text_color,
         name_width,
     );
     if row.display.shows_description {
+        let (full, compact) = provider_lines(item);
+        let font_size = size::SUBHEADLINE + 0.5;
+        let chosen = if painter.layout_no_wrap(full.clone(),FontId::proportional(font_size),weak).size().x <= name_width {
+            full
+        } else {
+            compact
+        };
         let sub = kit::galley(
             ui,
-            &subtitle(item),
-            size::SUBHEADLINE + 0.5,
+            &chosen,
+            font_size,
             kit::REGULAR,
             weak,
             name_width,
@@ -420,24 +462,20 @@ pub fn instrument_row(ui: &mut egui::Ui, item: &WatchlistInstrument, row: &RowSt
         );
     }
 
-    let hover = match warning {
-        Some(note) => note,
-        None => {
-            let mut text = format!(
-                "{}\n{}:{}",
-                item.name,
-                item.instrument.source.watchlist_slug(),
-                item.instrument.symbol
-            );
-            // Providers disagree on what a change is measured against, so say which.
-            if let Some(basis) = quote.and_then(|quote| quote.change_basis) {
-                text.push('\n');
-                text.push_str(basis.label());
-            }
-            if let Some(note) = quote.and_then(|q| q.note.as_deref()) { text.push('\n'); text.push_str(note); }
-            text
-        }
-    };
+    let mut hover = format!("{}\n{}:{}\n{}",item.name,item.instrument.source.watchlist_slug(),
+        item.instrument.symbol,item.instrument.source.display_name());
+    if !item.label.is_empty() && item.label != item.name {
+        hover.push('\n');
+        hover.push_str(&item.label);
+    }
+    if let Some(basis) = quote.and_then(|quote| quote.change_basis) {
+        hover.push('\n');
+        hover.push_str(basis.label());
+    }
+    if let Some(note) = warning.as_deref().or_else(|| quote.and_then(|q| q.note.as_deref())) {
+        hover.push('\n');
+        hover.push_str(note);
+    }
     let spoken = if item.card.is_some() {
         format!("{} {}", item.name, item.label)
     } else {
@@ -471,16 +509,21 @@ fn column_edges(
     (edges, x)
 }
 
-/// The month's sparkline in `row`, ending where the value columns leave off; `None` when the
-/// list hides it.
+/// Reserve a useful name block first. The sparkline can shrink and, on a narrow
+/// panel, disappear temporarily. Its setting stays unchanged and it returns on
+/// resize. The header uses the same decision, so no orphaned 1M label is painted.
 fn chart_rect(display: &WatchlistDisplaySettings, row: Rect, values_left: f32) -> Option<Rect> {
-    display.shows_chart.then(|| {
-        let height = (row.height() - 2.0 * CHART_VERTICAL_INSET).max(8.0);
-        Rect::from_min_max(
-            Pos2::new(values_left - CHART_WIDTH, row.center().y - height / 2.0),
-            Pos2::new(values_left, row.center().y + height / 2.0),
-        )
-    })
+    if !display.shows_chart { return None; }
+    const PREFERRED_NAME_WIDTH: f32 = 146.0;
+    const MIN_CHART_WIDTH: f32 = 24.0;
+    let name_left = row.left() + LEADING_INSET + style::logo_size(display) + LOGO_GAP;
+    let width = (values_left - name_left - PREFERRED_NAME_WIDTH - CHART_GAP).min(CHART_WIDTH);
+    if width < MIN_CHART_WIDTH { return None; }
+    let height = (row.height() - 2.0 * CHART_VERTICAL_INSET).max(8.0);
+    Some(Rect::from_min_max(
+        Pos2::new(values_left - width, row.center().y - height / 2.0),
+        Pos2::new(values_left, row.center().y + height / 2.0),
+    ))
 }
 
 /// The coin artwork, or a monogram while it resolves (or when there is none).
@@ -725,6 +768,34 @@ mod tests {
             "0xdeadbeef",
         );
         assert_eq!(subtitle(&saved), "Polymarket");
+    }
+
+    #[test]
+    fn broker_qualified_symbols_have_short_unambiguous_names() {
+        let tv = item(DataSource::OpenChart,"FOREXCOM:EURUSD","EURUSD — FOREXCOM · Euro / U.S. Dollar","EURUSD");
+        assert_eq!(row_title(&tv),"EURUSD");
+        assert_eq!(provider_lines(&tv),("FOREXCOM · TradingView".into(),"FOREXCOM · TV".into()));
+        let oanda = item(DataSource::Oanda,"EUR_USD","EUR_USD — EUR/USD","EUR_USD");
+        assert_eq!(row_title(&oanda),"EUR_USD");
+        assert_eq!(provider_lines(&oanda).0,"OANDA API");
+        let dxy = item(DataSource::OpenChart,"CAPITALCOM:DXY","DXY — CAPITALCOM · US Dollar Index","DXY");
+        assert_eq!(row_title(&dxy),"DXY");
+        assert_eq!(provider_lines(&dxy).1,"CAPITALCOM · TV");
+    }
+
+    #[test]
+    fn sparkline_yields_space_to_names_before_numeric_columns() {
+        let mut display = WatchlistDisplaySettings::default();
+        display.shows_chart = true;
+        let row = Rect::from_min_size(Pos2::ZERO,Vec2::new(400.0,46.0));
+        let left = LEADING_INSET + style::logo_size(&display) + LOGO_GAP;
+        assert!(chart_rect(&display,row,left+100.0).is_none());
+        let medium = chart_rect(&display,row,left+146.0+CHART_GAP+32.0).unwrap();
+        assert!((medium.width()-32.0).abs()<0.01);
+        let wide = chart_rect(&display,row,left+300.0).unwrap();
+        assert_eq!(wide.width(),CHART_WIDTH);
+        display.shows_chart = false;
+        assert!(chart_rect(&display,row,left+300.0).is_none());
     }
 
     #[test]
