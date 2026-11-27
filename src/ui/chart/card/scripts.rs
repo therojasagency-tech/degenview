@@ -18,6 +18,7 @@ impl ChartCard {
             self.maximized_pane = None;
         }
         self.pane_measure = Default::default();
+        self.pane_drawings = Default::default();
         self.instances = instances;
         self.pine.reset();
     }

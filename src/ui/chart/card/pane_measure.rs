@@ -24,11 +24,11 @@ impl Measure {
     }
 }
 
-fn projection<'a>(view: &'a View, data: &'a FrameData<'_>, geometry: &'a PaneGeometry, ctx: &egui::Context) -> Projection<'a> {
+pub(super) fn projection<'a>(view: &'a View, data: &'a FrameData<'_>, geometry: &'a PaneGeometry, ctx: &egui::Context) -> Projection<'a> {
     Projection { scale: &geometry.scale, ..view.projection(geometry.plot, data.bars, PriceFormat::AUTO, ctx) }
 }
 
-fn anchor(proj: &Projection, point: Pos2, pine: &VisualOutput, bars: &[Kline], magnet: MagnetMode) -> Anchor {
+pub(super) fn anchor(proj: &Projection, point: Pos2, pine: &VisualOutput, bars: &[Kline], magnet: MagnetMode) -> Anchor {
     let point = Pos2::new(point.x.clamp(proj.plot.left(), proj.plot.right()), point.y.clamp(proj.plot.top(), proj.plot.bottom()));
     let original = proj.anchor(point);
     if magnet == MagnetMode::Off { return original; }

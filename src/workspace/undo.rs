@@ -22,6 +22,7 @@ pub(super) struct UndoEntry {
 pub(super) enum Snapshot {
     /// The chart's drawings before a batch of commands (rulers excluded).
     Drawings(Vec<Drawing>),
+    PaneDrawings { key: String, drawings: Vec<Drawing> },
     /// The applied built-in indicators and the scripts on the chart.
     Indicators {
         config: IndicatorConfig,
@@ -80,6 +81,11 @@ impl Snapshot {
             Self::Drawings(drawings) => {
                 let current = std::mem::replace(&mut chart.drawings, drawings);
                 Self::Drawings(current.into_iter().filter(|d| !is_ruler(d)).collect())
+            }
+            Self::PaneDrawings { key, drawings } => {
+                let current = chart.parked_drawings.take(&key);
+                chart.parked_drawings.put(&key, drawings);
+                Self::PaneDrawings { key, drawings: current }
             }
             Self::Indicators {
                 config,
@@ -193,7 +199,7 @@ impl UndoHistory {
     /// added or removed elsewhere.
     pub(super) fn forget_drawings(&mut self, chart_id: u64) {
         self.forget(|entry| {
-            entry.chart_id == chart_id && matches!(entry.before, Snapshot::Drawings(_))
+            entry.chart_id == chart_id && matches!(entry.before, Snapshot::Drawings(_) | Snapshot::PaneDrawings { .. })
         });
     }
 
@@ -280,6 +286,20 @@ impl UndoHistory {
 }
 
 impl ChartWorkspace {
+    /// Pane drawings are persisted in the chart's separate, namespaced drawing sets.
+    pub(super) fn apply_pane_drawing_commands(&mut self, chart_id: u64, commands: Vec<(String, DrawingCommand)>) {
+        let Some(chart) = self.charts.iter_mut().find(|chart| chart.id == chart_id) else { return; };
+        for (key, command) in commands {
+            if !key.starts_with("@pane/v1/") { continue; }
+            let before = chart.parked_drawings.get(&key).to_vec();
+            let mut after = before.clone();
+            if crate::model::drawings::apply_commands(&mut after, vec![command]) {
+                chart.parked_drawings.put(&key, after);
+                self.history.record(chart_id, Snapshot::PaneDrawings { key, drawings: before });
+            }
+        }
+    }
+
     pub(super) fn apply_drawing_commands(&mut self, chart_id: u64, commands: Vec<DrawingCommand>) {
         if commands.is_empty() {
             return;

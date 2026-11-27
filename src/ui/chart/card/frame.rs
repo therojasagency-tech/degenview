@@ -611,6 +611,9 @@ impl ChartCard {
                     pointer,
                 );
                 tooltip = tooltip.or(pane_tooltip);
+                if !drawing.hide_all {
+                    self.pane_drawings.paint(painter, data, view, &geometry, *id, self.timeframe, &self.instances, drawing);
+                }
                 if decor.time_lock && !drawing.hide_all {
                     self.pane_measure.paint(painter, data, view, &geometry, *id, pine, self.timeframe);
                 }

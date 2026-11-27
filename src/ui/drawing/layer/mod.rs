@@ -76,6 +76,9 @@ const DIVIDER_REACH: f32 = 4.0;
 pub struct DrawingFrame<'a> {
     // Inputs.
     pub drawings: &'a [Drawing],
+    /// Separate persisted value-space drawings, never projected onto the price pane.
+    pub pane_sets: Option<&'a crate::model::drawings::market::MarketDrawings>,
+    pub pane_commands: Vec<(String, DrawingCommand)>,
     pub tool: Tool,
     /// The selected drawings, only those that belong to this chart.
     pub selected: Vec<u64>,
@@ -160,6 +163,8 @@ impl<'a> DrawingFrame<'a> {
     pub fn new(drawings: &'a [Drawing], tool: Tool, selected: Option<u64>, next_id: u64) -> Self {
         Self {
             drawings,
+            pane_sets: None,
+            pane_commands: Vec::new(),
             tool,
             selected: selected.into_iter().collect(),
             next_id,
@@ -191,6 +196,11 @@ impl<'a> DrawingFrame<'a> {
             link_request: None,
             alert_price: None,
         }
+    }
+
+    pub fn with_pane_sets(mut self, sets: &'a crate::model::drawings::market::MarketDrawings) -> Self {
+        self.pane_sets = Some(sets);
+        self
     }
 
     pub fn with_selection(mut self, selected: Vec<u64>) -> Self {
@@ -593,6 +603,10 @@ impl DrawingLayer {
     }
 
     /// The topmost drawing under `pointer`; a selected drawing's handles win over anything.
+    pub(in crate::ui) fn hit_drawing_id(&mut self, frame: &DrawingFrame, pointer: Pos2, proj: &Projection) -> Option<u64> {
+        self.hit_test(frame, pointer, proj, false).map(|hit| hit.id)
+    }
+
     fn hit_test(
         &mut self,
         frame: &DrawingFrame,

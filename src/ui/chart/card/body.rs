@@ -197,8 +197,10 @@ impl ChartCard {
         let held = self.pointer_is_held(layout.main_visible, replay.selecting);
         let zooming = self.zoom_is_live(layout.main_visible, replay.selecting);
         let pane_claim = if let Some(view) = &view {
-            self.pane_measure.update(ui, response, data, layout, view, self.timeframe, drawing,
-                replay.selecting || held || zooming)
+            let blocked = replay.selecting || held || zooming;
+            let measured = self.pane_measure.update(ui, response, data, layout, view, self.timeframe, drawing, blocked);
+            let drawn = self.pane_drawings.update(ui, response, data, layout, view, self.timeframe, &self.instances, drawing, blocked || measured);
+            measured || drawn
         } else { false };
         if layout.main_visible
             && let Some(view) = &view

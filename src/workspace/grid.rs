@@ -306,6 +306,7 @@ impl ChartWorkspace {
         let mut link_waiting = false;
 
         let mut drawing_commands: Vec<(u64, Vec<DrawingCommand>)> = Vec::new();
+        let mut pane_drawing_commands: Vec<(u64, Vec<(String, DrawingCommand)>)> = Vec::new();
         let mut drawing_select: Option<(u64, Vec<u64>)> = None;
         let mut drawing_put_down = false;
         let picture_work = self.content.work_snapshot(self.focused);
@@ -549,6 +550,7 @@ impl ChartWorkspace {
                                                 None,
                                                 chart.next_drawing_id,
                                             )
+                                            .with_pane_sets(&chart.parked_drawings)
                                             .with_pending_content(pending)
                                             .with_picture_work(place_now, replace_with)
                                             .with_selection(selected)
@@ -673,6 +675,9 @@ impl ChartWorkspace {
                                             if let Some(drawing_id) = frame.open_properties {
                                                 drawing_properties_request =
                                                     Some((chart_id, drawing_id));
+                                            }
+                                            if !frame.pane_commands.is_empty() {
+                                                pane_drawing_commands.push((chart_id, std::mem::take(&mut frame.pane_commands)));
                                             }
                                             let frame_commands =
                                                 std::mem::take(&mut frame.commands);
@@ -894,6 +899,9 @@ impl ChartWorkspace {
 
         for (chart_id, drawing) in drawing_commands {
             self.apply_drawing_commands(chart_id, drawing);
+        }
+        for (chart_id, commands) in pane_drawing_commands {
+            self.apply_pane_drawing_commands(chart_id, commands);
         }
         self.apply_broker_overlay_actions(live_actions);
         if let Some((chart_id, side)) = live_trade
