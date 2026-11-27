@@ -453,14 +453,17 @@ fn keys_never_reach_a_row_a_filter_hides() {
         assert_eq!(state.selected_entry, None, "a hidden row stays selected");
     }
 
-    // The same key on a drawn row still works.
-    let ctx = egui::Context::default();
-    let mut state = primed(&ctx, &lists, eth);
-    state.filter.text = "eth".to_owned();
-    let actions = show_frame(&ctx, &mut state, &lists, key(egui::Key::Delete));
-    assert!(actions.iter().any(
-        |action| matches!(action, WatchlistAction::RemoveEntry { entry, .. } if *entry == eth)
-    ));
+    // A visible selected row is also protected from destructive global keys.
+    for delete in [egui::Key::Delete, egui::Key::Backspace] {
+        let ctx = egui::Context::default();
+        let mut state = primed(&ctx, &lists, eth);
+        state.filter.text = "eth".to_owned();
+        let actions = show_frame(&ctx, &mut state, &lists, key(delete));
+        assert!(!actions.iter().any(
+            |action| matches!(action, WatchlistAction::RemoveEntry { .. } | WatchlistAction::RemoveFromList { .. })
+        ));
+        assert_eq!(state.selected_entry, Some(eth));
+    }
 }
 
 #[test]

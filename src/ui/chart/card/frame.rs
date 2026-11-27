@@ -342,7 +342,6 @@ impl ChartCard {
         decor: &Decor,
         overlays: &mut dyn Overlays,
     ) {
-        self.market_clock.set(crate::model::market::session::MarketClock::for_market(data.source, data.symbol));
         let (line, bars, candles, chart_type) =
             (data.line, data.bars, data.candles, data.chart_type);
         let (style, plot, rect, full_rect) =
@@ -564,15 +563,6 @@ impl ChartCard {
             } else { Vec::new() },
         );
         self.draw_time_axis(painter, full_rect, &time_labels, style);
-        let zone = match self.market_clock.get() {
-            crate::model::market::session::MarketClock::ForexNy17
-            | crate::model::market::session::MarketClock::UsEquities => "NY",
-            crate::model::market::session::MarketClock::CryptoUtc => "UTC",
-            crate::model::market::session::MarketClock::Unknown => "UTC?",
-        };
-        painter.text(Pos2::new((plot.right()+full_rect.right())/2.0,
-            full_rect.bottom()-style.time_axis_height()/2.0),
-            Align2::CENTER_CENTER, zone, style.time_font(), style.text_color);
         // The tags of the lines at a price or a time sit on the axes, which the drawings'
         // clipped painter cannot reach.
         layer.paint_tags(&main_painter, full_rect, plot, &projection, style);

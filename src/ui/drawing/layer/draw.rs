@@ -1130,7 +1130,7 @@ pub(super) fn paint_tag(
             painter.text(
                 area.center(),
                 Align2::CENTER_CENTER,
-                crate::format::timestamp(time_ms),
+                crate::format::timestamp(crate::service::system::timezone::local_display_ms(time_ms)),
                 style.time_font(),
                 Color32::WHITE,
             );

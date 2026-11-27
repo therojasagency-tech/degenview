@@ -1,0 +1,1 @@
+Use the Mac's local wall clock for chart axis, crosshair and vertical drawing labels; keep provider timestamps and market/Pine session rules unchanged. Disable window-wide Delete/Backspace removal from watchlists, since the chart automatically selects its instrument in the sidebar. Explicit row-menu removal remains available.

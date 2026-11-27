@@ -459,7 +459,7 @@ impl ChartCard {
 
     /// A bar's time as the chart writes it: to the second on a candle shorter than a minute.
     pub(super) fn time_text(&self, epoch_ms: i64) -> String {
-        let epoch_ms = self.market_display_ms(epoch_ms);
+        let epoch_ms = self.display_time_ms(epoch_ms);
         if self.shows_seconds() {
             format::timestamp_seconds(epoch_ms)
         } else {
@@ -467,23 +467,16 @@ impl ChartCard {
         }
     }
 
+    /// Chart display follows the viewer's time zone, never the trading-session clock.
     /// Daily and higher native candles may carry UTC-midnight date labels rather than
-    /// actual session opens. Preserve those labels rather than shifting them to yesterday.
-    fn market_display_ms(&self, epoch_ms: i64) -> i64 {
+    /// actual session opens. Preserve those labels.
+    fn display_time_ms(&self, epoch_ms: i64) -> i64 {
         if self.timeframe.is_some_and(|tf| !tf.is_intraday())
             && epoch_ms.rem_euclid(86_400_000) == 0 {
             epoch_ms
         } else {
-            self.market_clock.get().display_ms(epoch_ms)
+            crate::service::system::timezone::local_display_ms(epoch_ms)
         }
-    }
-
-    fn market_mark_ms(&self, epoch_ms: i64) -> i64 {
-        if self.timeframe.is_some_and(|tf| !tf.is_intraday())
-            && self.market_clock.get() == crate::model::market::session::MarketClock::ForexNy17
-            && epoch_ms.rem_euclid(86_400_000) != 0 {
-            self.market_clock.get().trading_day(epoch_ms)*86_400_000
-        } else { self.market_display_ms(epoch_ms) }
     }
 
     /// Whether the candles are shorter than a minute, so times carry their seconds.
@@ -513,12 +506,12 @@ impl ChartCard {
         }
         let spacing = spacing_in_bars(slot_width, (widest+14.0).max(54.0));
         let mut cache = self.calendar_marks.borrow_mut();
-        let marks = cache.select_with(bars,spacing,visible.clone(), |time| self.market_mark_ms(time));
+        let marks = cache.select_with(bars,spacing,visible.clone(), |time| self.display_time_ms(time));
         let mut result = Vec::new();
         let mut last_right = f32::NEG_INFINITY;
         for mark in marks {
             let x = x_for(mark.index-visible.start);
-            let seconds = self.market_mark_ms(bars[mark.index].open_time).div_euclid(1000);
+            let seconds = self.display_time_ms(bars[mark.index].open_time).div_euclid(1000);
             let (year,month,day) = crate::format::civil_from_days(seconds.div_euclid(86400));
             let clock = seconds.rem_euclid(86400);
             let label = match mark.kind {

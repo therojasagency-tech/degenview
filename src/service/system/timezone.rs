@@ -5,6 +5,11 @@
 //! asked about (zones change offset on whole minutes) and all dropped once a minute, so a change
 //! of the system zone shows within a minute.
 
+/// Wall-clock representation for display only. Never store or compare this as an instant.
+pub fn local_display_ms(epoch_ms: i64) -> i64 {
+    epoch_ms.saturating_add(local_utc_offset_secs(epoch_ms) * 1_000)
+}
+
 /// Seconds east of UTC at `epoch_ms`, in the system time zone (DST included).
 pub fn local_utc_offset_secs(epoch_ms: i64) -> i64 {
     if cfg!(test) {

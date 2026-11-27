@@ -179,8 +179,10 @@ pub(super) fn content(
             state.drag = None;
         }
     }
-    // Only a row that is drawn can be opened or removed from the keyboard, and not on the
-    // frame the filter box lets go of focus (its Enter confirms the filter, not a row).
+    // Only a visible row can be opened with Enter. Never delete a watchlist row
+    // from a window-wide key event: the chart automatically highlights its market
+    // in the sidebar, and Delete/Backspace may be intended to erase a chart drawing.
+    // Explicit removal remains available from the row's context menu.
     if !ui.ctx().egui_wants_keyboard_input()
         && !state.filter_blurred
         && let Some(item) = state.selected_entry.and_then(|id| {
@@ -192,15 +194,6 @@ pub(super) fn content(
     {
         if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
             actions.push(WatchlistAction::Open(item.clone()));
-        }
-        if ui.input(|input| {
-            input.key_pressed(egui::Key::Delete) || input.key_pressed(egui::Key::Backspace)
-        }) {
-            actions.push(WatchlistAction::RemoveEntry {
-                list: list.id,
-                entry: item.id,
-            });
-            state.selected_entry = None;
         }
     }
 }
