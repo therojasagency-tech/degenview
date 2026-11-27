@@ -101,6 +101,28 @@ impl RulerReadout {
         format!("{}{}", self.sign(), format.format(self.price_delta.abs()))
     }
 
+    /// FX uses conventional pips and tenths of a pip, independent of screen zoom.
+    /// Other instruments use the chart's displayed precision, not a claimed exchange tick.
+    pub fn distance_text(&self, format: PriceFormat, reference: f64, pip: Option<f64>) -> String {
+        if let Some(pip) = pip {
+            let pips = self.price_delta / pip;
+            let points = pips * 10.0;
+            let pips = format!("{pips:+.1}");
+            let points = format!("{points:+.0}");
+            return tr!("{pips} pips · {points} pts", pips = pips, points = points);
+        }
+        let step = format.tick_size(reference);
+        let points = self.price_delta / step;
+        let points = format!("{points:+.1}");
+        tr!("{points} display pts", points = points)
+    }
+
+    pub fn measurement_price_text(&self, format: PriceFormat, reference: f64, pip: Option<f64>) -> String {
+        let step = pip.map_or_else(|| format.tick_size(reference), |pip| pip / 10.0);
+        let places = (-step.log10()).round().clamp(0.0,12.0) as usize;
+        format!("{:+.places$}", self.price_delta)
+    }
+
     pub fn bars_text(&self) -> String {
         tr_n!(self.bars, "{count} bar", "{count} bars")
     }
@@ -295,6 +317,24 @@ impl<'a> TimeIndex<'a> {
         }
     }
 
+    /// Distance in bar intervals, as the ruler shows (same bar = zero).
+    pub fn bar_distance(&self, first_ms: i64, second_ms: i64) -> usize {
+        (self.index_of(first_ms).round()-self.index_of(second_ms).round()).abs() as usize
+    }
+
+    /// Sum of volume only when both measurement endpoints are in the loaded history.
+    pub fn measured_volume(&self, first_ms: i64, second_ms: i64) -> Option<f64> {
+        let first = first_ms.min(second_ms);
+        let last = first_ms.max(second_ms);
+        if first < self.candles.first()?.open_time || last > self.candles.last()?.open_time { return None; }
+        let from = self.index_of(first).round() as usize;
+        let to = self.index_of(last).round() as usize;
+        let bars = self.candles.get(from..=to)?;
+        if bars.iter().any(|bar| !bar.volume.is_finite() || bar.volume < 0.0) { return None; }
+        let volume: f64 = bars.iter().map(|bar| bar.volume).sum();
+        (volume.is_finite() && volume > 0.0).then_some(volume)
+    }
+
     /// Candles covered by a span between two times, inclusive of both ends.
     pub fn bars_between(&self, first_ms: i64, second_ms: i64) -> usize {
         let a = self.index_of(first_ms).round();
@@ -333,6 +373,9 @@ pub fn draw_ruler(
     rect: Rect,
     readout: &RulerReadout,
     format: PriceFormat,
+    reference: f64,
+    pip: Option<f64>,
+    volume: Option<f64>,
     emphasized: bool,
     dashed_draft: bool,
 ) {
@@ -366,44 +409,41 @@ pub fn draw_ruler(
         }
     }
 
-    // Readout card: centred under the box (above it when there is no room).
-    let lines = [
-        format!(
-            "{} ({})",
-            readout.percent_text(),
-            readout.price_text(format)
-        ),
+    // The plate grows to the measured text, instead of clipping larger values.
+    let mut lines = vec![
+        format!("{} ({})", readout.measurement_price_text(format,reference,pip),readout.percent_text()),
+        readout.distance_text(format,reference,pip),
         readout.coverage_text(),
     ];
-    let card_size = Vec2::new(150.0, 38.0);
-    let mut top = rect.bottom() + 6.0;
-    if top + card_size.y > plot.bottom() {
-        top = (rect.top() - 6.0 - card_size.y).max(plot.top());
+    if let Some(volume) = volume {
+        let compact = if volume >= 1e9 { format!("{:.2}B",volume/1e9) }
+            else if volume >= 1e6 { format!("{:.2}M",volume/1e6) }
+            else if volume >= 1e3 { format!("{:.2}K",volume/1e3) }
+            else { format!("{volume:.2}") };
+        lines.push(format!("Vol. {compact}"));
     }
-    let left = (rect.center().x - card_size.x / 2.0)
-        .clamp(plot.left(), (plot.right() - card_size.x).max(plot.left()));
-    let card = Rect::from_min_size(Pos2::new(left, top), card_size);
-    painter.rect(
-        card,
-        4.0,
-        theme::chrome().gamma_multiply(0.95),
-        Stroke::new(1.0, color),
-        StrokeKind::Inside,
-    );
-    painter.text(
-        card.center_top() + Vec2::new(0.0, 12.0),
-        Align2::CENTER_CENTER,
-        &lines[0],
-        FontId::monospace(10.0),
-        color,
-    );
-    painter.text(
-        card.center_bottom() - Vec2::new(0.0, 11.0),
-        Align2::CENTER_CENTER,
-        &lines[1],
-        FontId::monospace(9.0),
-        theme::text_secondary(),
-    );
+    let font = FontId::proportional(12.0);
+    let galleys: Vec<_> = lines.into_iter().map(|line|
+        clipped.layout_no_wrap(line,font.clone(),Color32::WHITE)).collect();
+    let width = galleys.iter().map(|g|g.size().x).fold(0.0,f32::max)+20.0;
+    let height = galleys.iter().map(|g|g.size().y).sum::<f32>()+12.0+3.0*(galleys.len()-1) as f32;
+    let card_size = Vec2::new(width,height);
+    if width > plot.width() || height > plot.height() { return; }
+    let below = rect.bottom()+6.0;
+    let above = rect.top()-6.0-height;
+    let top = if below+height <= plot.bottom() { below } else { above }
+        .clamp(plot.top(),plot.bottom()-height);
+    let left = (rect.center().x-width/2.0).clamp(plot.left(),plot.right()-width);
+    let card = Rect::from_min_size(Pos2::new(left,top),card_size);
+    // TV-style solid plate, with readable white labels for up and down moves.
+    let fill = if readout.is_upward() { Color32::from_rgb(35,94,213) } else { Color32::from_rgb(179,45,67) };
+    clipped.rect_filled(card,5.0,fill);
+    let mut y = top+6.0;
+    for galley in galleys {
+        let size = galley.size();
+        clipped.galley(Pos2::new(card.center().x-size.x/2.0,y),galley,Color32::WHITE);
+        y += size.y+3.0;
+    }
 }
 
 /// Hit-test a ruler rectangle: corners resize, edges move, the interior is not a
@@ -432,6 +472,30 @@ mod tests {
         assert!(!down.is_upward());
         assert_eq!(down.percent_text(), "-10.00%");
         assert_eq!(down.coverage_text(), "1 bar");
+    }
+
+    #[test]
+    fn forex_ruler_uses_pips_and_pipettes_in_both_directions() {
+        let up=RulerReadout::new(1.09500,1.09708,111,111*900);
+        assert_eq!(up.measurement_price_text(PriceFormat::AUTO,1.095,Some(0.0001)),"+0.00208");
+        let label=up.distance_text(PriceFormat::AUTO,1.095,Some(0.0001));
+        assert!(label.contains("+20.8") && label.contains("+208"));
+        let down=RulerReadout::new(150.0,149.863,34,34*900);
+        let label=down.distance_text(PriceFormat::AUTO,150.0,Some(0.01));
+        assert!(label.contains("-13.7") && label.contains("-137"));
+        let stock=RulerReadout::new(100.0,100.25,1,60);
+        assert!(stock.distance_text(PriceFormat::AUTO,100.0,None).contains("+25.0"));
+    }
+
+    #[test]
+    fn ruler_counts_intervals_and_volume_only_with_loaded_endpoints() {
+        let mut data=candles(&[1000,2000,3000,4000]);
+        for b in &mut data { b.volume=2.0; }
+        let time=TimeIndex::new(&data);
+        assert_eq!(time.bar_distance(1000,3000),2);
+        assert_eq!(time.bar_distance(2000,2000),0);
+        assert_eq!(time.measured_volume(3000,1000),Some(6.0));
+        assert_eq!(time.measured_volume(1000,5000),None);
     }
 
     #[test]

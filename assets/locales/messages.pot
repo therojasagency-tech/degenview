@@ -21995,3 +21995,11 @@ msgstr ""
 #: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
 msgid "Indicator template duplicated."
 msgstr ""
+
+#: src/ui/drawing/render.rs
+msgid "{pips} pips · {points} pts"
+msgstr ""
+
+#: src/ui/drawing/render.rs
+msgid "{points} display pts"
+msgstr ""

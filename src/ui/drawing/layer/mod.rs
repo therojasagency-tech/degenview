@@ -449,6 +449,8 @@ struct CacheEntry {
 
 #[derive(Default)]
 pub(in crate::ui) struct DrawingLayer {
+    ruler_pip: Option<f64>,
+    ruler_volume: bool,
     gesture: Option<Gesture>,
     /// The Eraser's sweep: what the pointer has passed over since the press.
     sweep: Option<erase::Sweep>,
@@ -537,6 +539,11 @@ fn constrained(tool: Tool, first: Option<Pos2>, pointer: Pos2, shift: bool) -> P
 }
 
 impl DrawingLayer {
+    pub(in crate::ui) fn configure_ruler(&mut self, source: crate::model::DataSource, symbol: &str, native_bars: bool) {
+        self.ruler_pip = crate::model::market::forex::pip_size(source,symbol);
+        self.ruler_volume = native_bars && source.provides_volume();
+    }
+
     /// Whether a gesture owns the plot drag, so the card must not pan.
     pub(in crate::ui) fn claims_drag(&self) -> bool {
         self.gesture.is_some() || self.sweep.is_some() || self.cancelled_drag
@@ -1615,15 +1622,19 @@ impl DrawingLayer {
                 let readout = RulerReadout::new(
                     a.price,
                     b.price,
-                    proj.times.bars_between(a.time_ms, b.time_ms),
-                    (b.time_ms - a.time_ms) / 1000,
+                    proj.times.bar_distance(a.time_ms, b.time_ms),
+                    b.time_ms.saturating_sub(a.time_ms) / 1000,
                 );
+                let volume = if self.ruler_volume { proj.times.measured_volume(a.time_ms,b.time_ms) } else { None };
                 render::draw_ruler(
                     painter,
                     proj.plot,
                     ruler_rect(*a, *b, proj),
                     &readout,
                     proj.format,
+                    a.price,
+                    self.ruler_pip,
+                    volume,
                     emphasized && !draft,
                     draft,
                 );

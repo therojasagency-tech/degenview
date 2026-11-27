@@ -495,6 +495,7 @@ impl ChartCard {
         }
 
         let projection = view.projection(plot, bars, self.appearance.price_format(), painter.ctx());
+        layer.configure_ruler(data.source,data.symbol,data.constructed.is_none());
         layer.paint(&clipped, &projection, drawing);
         overlays.after_drawings(layer, &projection, drawing, layout);
         for (pine_layer, _) in &pine_layers {

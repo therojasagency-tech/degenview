@@ -20737,3 +20737,11 @@ msgstr "Plantilla de indicadores renombrada."
 #: src/ui/chart/settings/indicator_templates.rs src/model/chart/context/mod.rs
 msgid "Indicator template duplicated."
 msgstr "Plantilla de indicadores duplicada."
+
+#: src/ui/drawing/render.rs
+msgid "{pips} pips · {points} pts"
+msgstr "{pips} pips · {points} puntos"
+
+#: src/ui/drawing/render.rs
+msgid "{points} display pts"
+msgstr "{points} puntos (escala)"
