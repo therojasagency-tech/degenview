@@ -152,15 +152,7 @@ Want to build it yourself? See [BUILDING.md](BUILDING.md).
 
 DegenView is an independent project and is not affiliated with TradingView.
 
-## Star History
 
-<a href="https://www.star-history.com/?repos=degenview%2Fdegenview&type=date&legend=top-right">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=degenview/degenview&type=date&theme=dark&legend=bottom-right" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=degenview/degenview&type=date&legend=bottom-right" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=degenview/degenview&type=date&legend=bottom-right" />
- </picture>
-</a>
 
 ## License
 
