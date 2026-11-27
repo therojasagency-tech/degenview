@@ -4,6 +4,12 @@
 use super::overlays::on_color;
 use super::*;
 
+/// The already measured marks shared by the time axis and every pane's vertical grid.
+pub(super) struct TimeLabel {
+    pub x: f32,
+    galley: std::sync::Arc<egui::Galley>,
+}
+
 impl ChartCard {
     /// The price labels and the grid lines behind the series. One tick list serves both, so a
     /// line is always on its label; the vertical lines stand on the time axis' own ticks. The
@@ -460,50 +466,52 @@ impl ChartCard {
         116.0 * style.time_size / 9.0 * characters / 16.0
     }
 
-    /// The time labels, on the bars the vertical grid stands on.
+    /// Select marks in calendar order of importance, then measure the actual localized
+    /// labels. The same accepted list drives every pane's grid, including at the edges.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn draw_time_axis(
-        &self,
-        painter: &egui::Painter,
-        rect: Rect,
-        candles: &[Kline],
-        ticks: &[usize],
-        x_for: &dyn Fn(usize) -> f32,
-        plot_right: f32,
-        style: &CanvasStyle,
-    ) {
-        let y = rect.bottom() - style.time_axis_height() / 2.0;
-        let span = candles.first().zip(candles.last())
-            .map_or(0, |(first, last)| last.open_time.saturating_sub(first.open_time));
-        let mut previous_right = f32::NEG_INFINITY;
-        for index in ticks {
-            let Some(candle) = candles.get(*index) else {
-                continue;
+    pub(super) fn calendar_labels(&self, painter: &egui::Painter, bars: &[Kline],
+        visible: std::ops::Range<usize>, x_for: &dyn Fn(usize) -> f32, plot: Rect,
+        slot_width: f32, style: &CanvasStyle) -> Vec<TimeLabel> {
+        use crate::model::chart::canvas::time_marks::{MarkKind, spacing_in_bars};
+        let font = style.time_font();
+        let measure = |text: String| painter.layout_no_wrap(text,font.clone(),style.text_color);
+        let time_example = if self.shows_seconds() { "00:00:00" } else { "00:00" };
+        let mut widest = measure(time_example.to_owned()).size().x.max(measure("2026".to_owned()).size().x);
+        for month in 1..=12 {
+            widest = widest.max(measure(crate::i18n::datetime::month_short(2026,month)).size().x);
+        }
+        let spacing = spacing_in_bars(slot_width, (widest+14.0).max(54.0));
+        let mut cache = self.calendar_marks.borrow_mut();
+        let marks = cache.select(bars,spacing,visible.clone());
+        let mut result = Vec::new();
+        let mut last_right = f32::NEG_INFINITY;
+        for mark in marks {
+            let x = x_for(mark.index-visible.start);
+            let seconds = bars[mark.index].open_time.div_euclid(1000);
+            let (year,month,day) = crate::format::civil_from_days(seconds.div_euclid(86400));
+            let clock = seconds.rem_euclid(86400);
+            let label = match mark.kind {
+                MarkKind::Year => year.to_string(),
+                MarkKind::Month => crate::i18n::datetime::month_short(year,month),
+                MarkKind::Day => day.to_string(),
+                MarkKind::Time if self.shows_seconds() => format!("{:02}:{:02}:{:02}",clock/3600,clock/60%60,clock%60),
+                MarkKind::Time => format!("{:02}:{:02}",clock/3600,clock/60%60),
             };
-            let label = self.time_text(candle.open_time);
-            const DAY_MS: i64 = 86_400_000;
-            let label = if span >= 8 * 365 * DAY_MS {
-                &label[..4]
-            } else if span >= 365 * DAY_MS {
-                &label[..7]
-            } else if span >= 90 * DAY_MS || self.timeframe.is_some_and(|tf| tf.nominal_ms() >= DAY_MS) {
-                &label[..10]
-            } else {
-                &label[5..]
-            };
-            let x = x_for(*index);
-            // A label that would hang over the plot's right edge waits for the chart to move, as a
-            // price label does at the plot's top and bottom: it would run into the price axis and
-            // the scale button in the corner. So does one cut by the left edge.
-            let galley =
-                painter.layout_no_wrap(label.to_owned(), style.time_font(), style.text_color);
-            let half = galley.size().x / 2.0;
-            if x + half > plot_right || x - half < rect.left() || x - half < previous_right + 12.0 {
-                continue;
-            }
-            previous_right = x + half;
-            let at = Pos2::new(x, y) - galley.size() / 2.0;
-            painter.galley(at, galley, style.text_color);
+            let galley = measure(label);
+            let half = galley.size().x/2.0;
+            if x-half < plot.left() || x+half > plot.right() || x-half < last_right+8.0 { continue; }
+            last_right = x+half;
+            result.push(TimeLabel { x, galley });
+        }
+        result
+    }
+
+    pub(super) fn draw_time_axis(&self, painter: &egui::Painter, rect: Rect,
+        labels: &[TimeLabel], style: &CanvasStyle) {
+        let y = rect.bottom()-style.time_axis_height()/2.0;
+        for label in labels {
+            let at = Pos2::new(label.x,y)-label.galley.size()/2.0;
+            painter.galley(at,label.galley.clone(),style.text_color);
         }
     }
 }

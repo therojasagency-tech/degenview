@@ -502,6 +502,8 @@ pub fn axis_width(widest_label: f32, floor: f32, ceiling: f32) -> f32 {
     stepped.clamp(floor, ceiling.max(floor))
 }
 
+pub mod time_marks;
+
 // MARK: Time ticks
 
 /// Which of the `len` shown bars carry a time label and a vertical grid line: every `step`-th bar

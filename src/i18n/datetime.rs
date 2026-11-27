@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use icu_calendar::Date;
 use icu_datetime::DateTimeFormatter;
-use icu_datetime::fieldsets::{E, MD, MDE, MDT, YM, YMD, YMDE};
+use icu_datetime::fieldsets::{E, M, MD, MDE, MDT, YM, YMD, YMDE};
 use icu_datetime::options::TimePrecision;
 use icu_locale_core::Locale as IcuLocale;
 use icu_locale_core::extensions::unicode::{key, value};
@@ -86,6 +86,7 @@ formatter!(weekday_month_day_formatter, MDE, MDE::long());
 formatter!(weekday_month_day_year_formatter, YMDE, YMDE::long());
 formatter!(month_year_formatter, YM, YM::long());
 formatter!(month_year_short_formatter, YM, YM::medium());
+formatter!(month_short_formatter, M, M::medium());
 formatter!(weekday_long_formatter, E, E::long());
 formatter!(weekday_short_formatter, E, E::short());
 
@@ -210,6 +211,12 @@ pub fn month_year(year: i64, month: i64) -> String {
         || format!("{year}-{month:02}"),
         |date| plain_spaces(month_year_formatter(Clock::Day24).format(&date).to_string()),
     )
+}
+
+/// A standalone abbreviated month for a calendar tick on the chart's time axis.
+pub fn month_short(year: i64, month: i64) -> String {
+    iso(year,month,1).map_or_else(|| month.to_string(),
+        |date| plain_spaces(month_short_formatter(Clock::Day24).format(&date).to_string()))
 }
 
 /// "Oct 2026": the month abbreviated, for an axis that has little room.
